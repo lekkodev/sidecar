@@ -1,0 +1,8 @@
+version: v1
+plugins:
+  - name: prost
+    out: src/gen
+    opt:
+      - file_descriptor_set
+  - name: tonic
+    out: src/gen
