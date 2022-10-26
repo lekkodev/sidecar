@@ -1,3 +1,5 @@
+#![allow(clippy::derive_partial_eq_without_eq)]
+
 pub mod backend_beta {
     include!("lekko.backend.v1beta1.rs");
 }
