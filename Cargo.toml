@@ -9,4 +9,6 @@ edition = "2021"
 prost = { version="0.11", features=["prost-derive"] }
 prost-types = "0.11"
 tokio = { version="1.0", features=["rt", "rt-multi-thread", "macros"] }
-tonic = { version= "0.8" }
+tonic = { version= "0.8", features=["tls"]}
+hyper-rustls = { version="0.23", features=["webpki-roots", "http2"] }
+hyper = { version="0.14", features=["full"] }
