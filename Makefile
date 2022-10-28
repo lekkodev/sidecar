@@ -45,3 +45,32 @@ lint:
 
 .PHONY: all
 all: build test format lint
+
+
+
+
+## Docker
+
+# Settable
+DOCKER_BINS := sidecar
+# Settable
+DOCKER_BUILD_EXTRA_FLAGS ?=
+
+
+DOCKER_ORG := lekko
+
+define dockerbinfunc
+.PHONY: dockerbuilddeps$(1)
+dockerbuilddeps$(1)::
+
+.PHONY: dockerbuild$(1)
+dockerbuild$(1): dockerbuilddeps$(1)
+	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_ORG)/$(1):latest -f Dockerfile.$(1) .
+ifdef EXTRA_DOCKER_ORG
+	docker tag $(DOCKER_ORG)/$(1):latest $(EXTRA_DOCKER_ORG)/$(1):latest
+endif
+
+dockerbuild:: dockerbuild$(1)
+endef
+
+$(foreach dockerbin,$(sort $(DOCKER_BINS)),$(eval $(call dockerbinfunc,$(dockerbin))))

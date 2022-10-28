@@ -1,0 +1,29 @@
+FROM --platform=${BUILDPLATFORM} rust:1.64-slim as builder
+
+WORKDIR /workspace
+
+COPY Cargo.toml Cargo.lock /workspace/
+
+## Install target platform (Cross-Compilation) --> Needed for Alpine
+RUN rustup target add x86_64-unknown-linux-musl
+
+RUN mkdir src && touch src/lib.rs
+
+RUN apt-get update && apt-get install -y musl-tools
+
+# This is a dummy build to get the dependencies cached.
+RUN cargo build --target x86_64-unknown-linux-musl 
+
+COPY src /workspace/src
+
+## Touch main.rs to prevent cached release build
+RUN touch /workspace/src/main.rs
+
+# This is the actual application build.
+RUN cargo build --target x86_64-unknown-linux-musl 
+
+FROM --platform=${TARGETPLATFORM} alpine
+
+COPY --from=builder /workflow/target/x86_64-unknown-linux-musl/release/sidecar /usr/local/bin/sidecar
+
+ENTRYPOINT ["/usr/local/bin/sidecar"]
