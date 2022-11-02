@@ -53,11 +53,11 @@ all: build test format lint
 
 # Settable
 DOCKER_BINS := sidecar
-# Settable
-DOCKER_BUILD_EXTRA_FLAGS ?=
-
-
 DOCKER_ORG := lekko
+
+# TODO: right now, we haven't worked out cross-compilation. We need to
+# generate images on the source machines.
+# DOCKER_BUILD_EXTRA_FLAGS=--platform=linux/arm64/v8
 
 define dockerbinfunc
 .PHONY: dockerbuilddeps$(1)

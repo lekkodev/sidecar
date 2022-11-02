@@ -48,10 +48,13 @@ impl ConfigurationService for Passthrough {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = env::var("LEKKO_BIND_ADDR")
+    let addr = match env::var("LEKKO_BIND_ADDR")
         .unwrap_or_else(|_| "[::1]:50051".to_owned())
         .parse()
-        .unwrap();
+    {
+        Err(err) => panic!("parsing address failed: {:?}", err),
+        Ok(addr) => addr,
+    };
     println!("listening on port: {:?}", addr);
     let proxy_addr = env::var("LEKKO_PROXY_ADDR")
         .unwrap_or_else(|_| "https://grpc.lekko.dev".to_owned())
@@ -68,7 +71,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     );
 
+    println!("building client");
+
     let client = ConfigurationServiceClient::with_origin(client, proxy_addr);
+
+    println!("about to serve");
 
     Server::builder()
         .add_service(ConfigurationServiceServer::new(Passthrough { client }))
