@@ -25,31 +25,41 @@ impl ConfigurationService for Passthrough {
         &self,
         request: tonic::Request<GetBoolValueRequest>,
     ) -> Result<tonic::Response<GetBoolValueResponse>, tonic::Status> {
-        println!("Got request: {:?}", request);
+        println!("Got a request for GetBoolValue, proxying {:?}", request);
         let resp = self.client.clone().get_bool_value(request).await;
         if resp.is_err() {
             println!("error in proxying {:?}", resp)
         }
-        return resp;
+        resp
     }
     async fn get_proto_value(
         &self,
         request: tonic::Request<GetProtoValueRequest>,
     ) -> Result<tonic::Response<GetProtoValueResponse>, tonic::Status> {
-        self.client.clone().get_proto_value(request).await
+        println!("Got a request for GetProtoValue, proxying {:?}", request);
+        let resp = self.client.clone().get_proto_value(request).await;
+        if resp.is_err() {
+            println!("error in proxying {:?}", resp)
+        }
+        resp
     }
     async fn get_json_value(
         &self,
         request: tonic::Request<GetJsonValueRequest>,
     ) -> Result<tonic::Response<GetJsonValueResponse>, tonic::Status> {
-        self.client.clone().get_json_value(request).await
+        println!("Got a request for GetJSONValue, proxying {:?}", request);
+        let resp = self.client.clone().get_json_value(request).await;
+        if resp.is_err() {
+            println!("error in proxying {:?}", resp)
+        }
+        resp
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = match env::var("LEKKO_BIND_ADDR")
-        .unwrap_or_else(|_| "[::1]:50051".to_owned())
+        .unwrap_or_else(|_| "0.0.0.0:50051".to_owned())
         .parse()
     {
         Err(err) => panic!("parsing address failed: {:?}", err),
@@ -59,6 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let proxy_addr = env::var("LEKKO_PROXY_ADDR")
         .unwrap_or_else(|_| "https://grpc.lekko.dev".to_owned())
         .parse::<Uri>()?;
+
     println!("proxying to: {}", proxy_addr);
 
     let client = hyper::Client::builder().build(
@@ -71,11 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     );
 
-    println!("building client");
-
     let client = ConfigurationServiceClient::with_origin(client, proxy_addr);
-
-    println!("about to serve");
 
     Server::builder()
         .add_service(ConfigurationServiceServer::new(Passthrough { client }))

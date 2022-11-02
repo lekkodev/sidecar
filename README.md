@@ -15,9 +15,13 @@ cargo install protoc-gen-prost
 cargo install protoc-gen-prost-tonic
 buf generate --template buf.gen.yaml buf.build/lekkodev/cli
 ```
-###
+## Deploying
 
 Running the dockerfile for now:
 ```
-docker run -d -t --rm --name sidecar -p 50051:50051 -e LEKKO_BIND_ADDR='0.0.0.0:50051' -e RUST_BACKTRACE=1 docker.io/lekko/sidecar:latest
+docker run -d -t --rm --name sidecar -p 50051:50051 -e RUST_BACKTRACE=1 docker.io/lekko/sidecar:latest
 ```
+
+### Environment Variables
+You can set both `LEKKO_BIND_ADDR` and `LEKKO_PROXY_ADDR` using `-e` in `docker run` in order to change things.
+
