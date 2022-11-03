@@ -15,6 +15,18 @@ cargo install protoc-gen-prost
 cargo install protoc-gen-prost-tonic
 buf generate --template buf.gen.yaml buf.build/lekkodev/cli
 ```
+
+### Building docker files
+
+Run:
+```
+make dockerbuild
+```
+Or if you want an image for amd64 run:
+```
+make dockerbuild amd64
+```
+
 ## Deploying
 
 Running the dockerfile for now:

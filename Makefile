@@ -55,9 +55,15 @@ all: build test format lint
 DOCKER_BINS := sidecar
 DOCKER_ORG := lekko
 
-# TODO: right now, we haven't worked out cross-compilation. We need to
-# generate images on the source machines.
-# DOCKER_BUILD_EXTRA_FLAGS=--platform=linux/arm64/v8
+ifneq (,$(findstring amd64,$(MAKECMDGOALS)))
+    DOCKER_BUILD_EXTRA_FLAGS := --platform=linux/amd64
+    DOCKER_EXTRA_TAG := amd64
+endif
+
+# TODO: check our local machine, right now this just runs on M1 Mac w/ Docker Desktop.
+DOCKER_BUILD_EXTRA_FLAGS ?= --platform=linux/arm64
+DOCKER_EXTRA_TAG ?= arm64
+
 
 define dockerbinfunc
 .PHONY: dockerbuilddeps$(1)
@@ -68,6 +74,9 @@ dockerbuild$(1): dockerbuilddeps$(1)
 	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_ORG)/$(1):latest -f Dockerfile.$(1) .
 ifdef EXTRA_DOCKER_ORG
 	docker tag $(DOCKER_ORG)/$(1):latest $(EXTRA_DOCKER_ORG)/$(1):latest
+endif
+ifdef DOCKER_EXTRA_TAG
+	docker tag $(DOCKER_ORG)/$(1):latest $(DOCKER_ORG)/$(1):$(DOCKER_EXTRA_TAG)
 endif
 
 dockerbuild:: dockerbuild$(1)

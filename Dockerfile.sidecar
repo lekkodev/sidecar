@@ -6,7 +6,24 @@ COPY Cargo.toml Cargo.lock /workspace/
 
 RUN mkdir src && touch src/lib.rs
 
-RUN cargo build --release
+RUN touch /rust_target.txt /apt_deps.txt /cc.txt /rust_flags.txt /ar.txt
+
+ARG TARGETPLATFORM
+RUN case "$TARGETPLATFORM" in \
+  "linux/amd64") echo x86_64-unknown-linux-gnu > /rust_target.txt && \
+  		 echo gcc-x86-64-linux-gnu >> /apt_deps.txt && \
+		 echo x86_64-linux-gnu-gcc >> /cc.txt && \
+		 echo '-C linker=x86_64-linux-gnu-gcc' >> /rust_flags.txt && \
+		 echo x86_64-linux-gnu-ar >> /ar.txt ;; \
+  "linux/arm64") echo aarch64-unknown-linux-gnu > /rust_target.txt ;; \
+  *) echo "$TARGETPLATFORM" && exit 1 ;; \
+esac
+
+RUN apt-get update && (cat /apt_deps.txt | xargs apt-get install -y)
+
+RUN rustup target add $(cat /rust_target.txt)
+
+RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build --release --target $(cat /rust_target.txt)
 
 COPY src /workspace/src
 
@@ -14,11 +31,13 @@ COPY src /workspace/src
 RUN touch /workspace/src/lib.rs
 
 # This is the actual application build.
-RUN cargo build --release
+RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build --release --target $(cat /rust_target.txt)
 
-FROM --platform=${BUILDPLATFORM} debian:bullseye-slim
+RUN cp target/$(cat /rust_target.txt)/release/sidecar .
 
-COPY --from=builder /workspace/target/release/sidecar /usr/local/bin/sidecar
+FROM --platform=${TARGETPLATFORM} debian:bullseye-slim
+
+COPY --from=builder /workspace/sidecar /usr/local/bin/sidecar
 
 # TODO entrypoint to prevent execing
 CMD ["/usr/local/bin/sidecar"]
