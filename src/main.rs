@@ -9,6 +9,9 @@ use sidecar::gen::backend_beta::{
     GetProtoValueRequest, GetProtoValueResponse,
 };
 use std::env;
+use tonic::codegen::CompressionEncoding;
+use tonic::metadata::MetadataMap;
+use tonic::Request;
 use tonic::{
     body::BoxBody,
     transport::{Server, Uri},
@@ -23,10 +26,12 @@ pub struct Passthrough {
 impl ConfigurationService for Passthrough {
     async fn get_bool_value(
         &self,
-        request: tonic::Request<GetBoolValueRequest>,
+        request: Request<GetBoolValueRequest>,
     ) -> Result<tonic::Response<GetBoolValueResponse>, tonic::Status> {
         println!("Got a request for GetBoolValue, proxying {:?}", request);
-        let resp = self.client.clone().get_bool_value(request).await;
+        let mut proxy_req = Request::new(request.get_ref().clone());
+        proxy_headers(&mut proxy_req, request.metadata());
+        let resp = self.client.clone().get_bool_value(proxy_req).await;
         if resp.is_err() {
             println!("error in proxying {:?}", resp)
         }
@@ -34,10 +39,12 @@ impl ConfigurationService for Passthrough {
     }
     async fn get_proto_value(
         &self,
-        request: tonic::Request<GetProtoValueRequest>,
+        request: Request<GetProtoValueRequest>,
     ) -> Result<tonic::Response<GetProtoValueResponse>, tonic::Status> {
         println!("Got a request for GetProtoValue, proxying {:?}", request);
-        let resp = self.client.clone().get_proto_value(request).await;
+        let mut proxy_req = Request::new(request.get_ref().clone());
+        proxy_headers(&mut proxy_req, request.metadata());
+        let resp = self.client.clone().get_proto_value(proxy_req).await;
         if resp.is_err() {
             println!("error in proxying {:?}", resp)
         }
@@ -45,14 +52,26 @@ impl ConfigurationService for Passthrough {
     }
     async fn get_json_value(
         &self,
-        request: tonic::Request<GetJsonValueRequest>,
+        request: Request<GetJsonValueRequest>,
     ) -> Result<tonic::Response<GetJsonValueResponse>, tonic::Status> {
         println!("Got a request for GetJSONValue, proxying {:?}", request);
-        let resp = self.client.clone().get_json_value(request).await;
+        let mut proxy_req = Request::new(request.get_ref().clone());
+        proxy_headers(&mut proxy_req, request.metadata());
+        let resp = self.client.clone().get_json_value(proxy_req).await;
         if resp.is_err() {
             println!("error in proxying {:?}", resp)
         }
         resp
+    }
+}
+
+// Sets the headers that we wish to forward to lekko. The apikey header is copied over as
+// the server needs it to authenticate the caller.
+fn proxy_headers<T>(proxy_request: &mut Request<T>, incoming_headers: &MetadataMap) {
+    if let Some(apikey) = incoming_headers.get("apikey") {
+        proxy_request
+            .metadata_mut()
+            .append("apikey", apikey.to_owned());
     }
 }
 
@@ -82,10 +101,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     );
 
-    let client = ConfigurationServiceClient::with_origin(client, proxy_addr);
+    // By default, send and accept GZip compression for both the client and the server.
+    let client = ConfigurationServiceClient::with_origin(client, proxy_addr)
+        .send_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Gzip);
+    let passthrough = ConfigurationServiceServer::new(Passthrough { client })
+        .send_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Gzip);
 
     Server::builder()
-        .add_service(ConfigurationServiceServer::new(Passthrough { client }))
+        .add_service(passthrough)
         .serve(addr)
         .await?;
 
