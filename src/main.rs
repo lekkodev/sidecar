@@ -9,6 +9,7 @@ use sidecar::gen::backend_beta::{
     GetProtoValueRequest, GetProtoValueResponse,
 };
 use std::env;
+use tonic::codegen::CompressionEncoding;
 use tonic::{
     body::BoxBody,
     transport::{Server, Uri},
@@ -84,8 +85,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = ConfigurationServiceClient::with_origin(client, proxy_addr);
 
+    let passthrough = ConfigurationServiceServer::new(Passthrough { client })
+        .send_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Gzip);
+
     Server::builder()
-        .add_service(ConfigurationServiceServer::new(Passthrough { client }))
+        .add_service(passthrough)
         .serve(addr)
         .await?;
 
