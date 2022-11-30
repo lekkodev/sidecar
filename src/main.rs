@@ -1,10 +1,10 @@
 use hyper::client::HttpConnector;
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
-use sidecar::gen::backend_beta::configuration_service_client::ConfigurationServiceClient;
-use sidecar::gen::backend_beta::configuration_service_server::{
+use sidecar::gen::lekko::backend::v1beta1::configuration_service_client::ConfigurationServiceClient;
+use sidecar::gen::lekko::backend::v1beta1::configuration_service_server::{
     ConfigurationService, ConfigurationServiceServer,
 };
-use sidecar::gen::backend_beta::{
+use sidecar::gen::lekko::backend::v1beta1::{
     GetBoolValueRequest, GetBoolValueResponse, GetJsonValueRequest, GetJsonValueResponse,
     GetProtoValueRequest, GetProtoValueResponse,
 };
