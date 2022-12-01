@@ -1,6 +1,6 @@
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
-use tonic::{body::BoxBody, metadata::MetadataMap, Request, Response, Status};
+use tonic::{body::BoxBody, metadata::MetadataMap, Request, Response};
 
 use crate::{
     gen::lekko::backend::v1beta1::{

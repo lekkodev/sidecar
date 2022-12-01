@@ -1,10 +1,9 @@
-use std::str::FromStr;
+
 
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
 use tonic::{
     body::BoxBody,
-    metadata::{AsciiMetadataValue, MetadataValue},
     Request,
 };
 
@@ -61,8 +60,8 @@ impl Store {
         }
         let success_resp = resp.unwrap().into_inner();
         println!(
-            "received feature contents for commit sha {}",
-            success_resp.commit_sha
+            "received feature contents for commit sha {}, resp {:?}",
+            success_resp.commit_sha, success_resp,
         );
 
         for namespace in success_resp.namespaces {
