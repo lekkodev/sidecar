@@ -51,7 +51,7 @@ impl Store {
                 "error fetching feature from distribution service {:?}",
                 resp
             );
-            return Result::Err(resp.unwrap_err());
+            return Err(resp.unwrap_err());
         }
         let success_resp = resp.unwrap().into_inner();
         println!(
@@ -66,10 +66,10 @@ impl Store {
                     feature.name, feature.sha
                 );
                 if feature.feature.is_some() {
-                    return Result::Ok(feature.feature.unwrap());
+                    return Ok(feature.feature.unwrap());
                 }
             }
         }
-        return Result::Err(tonic::Status::not_found("feature not found"));
+        return Err(tonic::Status::not_found("feature not found"));
     }
 }

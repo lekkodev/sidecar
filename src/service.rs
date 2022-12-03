@@ -33,7 +33,7 @@ impl ConfigurationService for Service {
             let resp = self.config_client.clone().get_bool_value(proxy_req).await;
             if resp.is_err() {
                 println!("error in proxying {:?}", resp);
-                return Result::Err(resp.err().unwrap());
+                return Err(resp.err().unwrap());
             }
             return resp;
         };
@@ -54,9 +54,9 @@ impl ConfigurationService for Service {
             .await;
         if let Err(error) = feature_data {
             println!("error getting feature data {:?}", error);
-            return Result::Err(error);
+            return Err(error);
         }
-        Result::Ok(Response::new(GetBoolValueResponse { value: false }))
+        Ok(Response::new(GetBoolValueResponse { value: false }))
     }
     async fn get_proto_value(
         &self,
@@ -69,7 +69,7 @@ impl ConfigurationService for Service {
             let resp = self.config_client.clone().get_proto_value(proxy_req).await;
             if resp.is_err() {
                 println!("error in proxying {:?}", resp);
-                return Result::Err(resp.err().unwrap());
+                return Err(resp.err().unwrap());
             }
             return resp;
         }
@@ -91,9 +91,9 @@ impl ConfigurationService for Service {
             .await;
         if let Err(error) = feature_data {
             println!("error getting feature data {:?}", error);
-            return Result::Err(error);
+            return Err(error);
         }
-        Result::Ok(Response::new(GetProtoValueResponse {
+        Ok(Response::new(GetProtoValueResponse {
             value: Option::None,
         }))
     }
@@ -108,7 +108,7 @@ impl ConfigurationService for Service {
             let resp = self.config_client.clone().get_json_value(proxy_req).await;
             if resp.is_err() {
                 println!("error in proxying {:?}", resp);
-                return Result::Err(resp.err().unwrap());
+                return Err(resp.err().unwrap());
             }
             return resp;
         }
@@ -129,9 +129,9 @@ impl ConfigurationService for Service {
             .await;
         if let Err(error) = feature_data {
             println!("error getting feature data {:?}", error);
-            return Result::Err(error);
+            return Err(error);
         }
-        Result::Ok(Response::new(GetJsonValueResponse { value: Vec::new() }))
+        Ok(Response::new(GetJsonValueResponse { value: Vec::new() }))
     }
 }
 
