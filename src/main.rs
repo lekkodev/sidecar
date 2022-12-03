@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "https://grpc.lekko.dev".to_owned())
         .parse::<Uri>()?;
 
-    let proxy_mode = true;
+    let proxy_mode = false;
     println!("lekko address: {}\nProxy mode: {}", lekko_addr, proxy_mode);
 
     let http_client = hyper::Client::builder().build(

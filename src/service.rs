@@ -1,8 +1,15 @@
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
+
+use prost::{
+    encoding::bool::{self},
+    DecodeError, Message,
+};
+use prost_types::Value;
 use tonic::{body::BoxBody, metadata::MetadataMap, Request, Response};
 
 use crate::{
+    evaluate::evaluator::evaluate,
     gen::lekko::backend::v1beta1::{
         configuration_service_client::ConfigurationServiceClient,
         configuration_service_server::ConfigurationService, GetBoolValueRequest,
@@ -10,7 +17,7 @@ use crate::{
         GetProtoValueResponse,
     },
     store::Store,
-    types::{FeatureRequestParams, RepositoryKey, APIKEY},
+    types::{self, FeatureRequestParams, RepositoryKey, APIKEY},
 };
 
 pub struct Service {
@@ -27,7 +34,7 @@ impl ConfigurationService for Service {
         request: Request<GetBoolValueRequest>,
     ) -> Result<tonic::Response<GetBoolValueResponse>, tonic::Status> {
         if self.proxy_mode {
-            println!("Got a request for GetBoolValue, proxying {:?}", request);
+            println!("Got a request for GetBoolValue, proxying");
             let mut proxy_req = Request::new(request.get_ref().clone());
             self.proxy_headers(&mut proxy_req, request.metadata());
             let resp = self.config_client.clone().get_bool_value(proxy_req).await;
@@ -37,7 +44,7 @@ impl ConfigurationService for Service {
             }
             return resp;
         };
-        println!("Got a request for GetBoolValue, evaluating {:?}", request);
+        println!("Got a request for GetBoolValue, evaluating");
         let apikey = request.metadata().get(APIKEY).unwrap().to_owned();
         let inner = request.into_inner();
         let feature_data = self
@@ -56,14 +63,19 @@ impl ConfigurationService for Service {
             println!("error getting feature data {:?}", error);
             return Err(error);
         }
-        Ok(Response::new(GetBoolValueResponse { value: false }))
+        let eval_result = evaluate(feature_data.unwrap(), inner.context)?;
+        let b: Result<bool, DecodeError> = types::from_any(&eval_result.0);
+        if b.is_err() {
+            return Err(tonic::Status::invalid_argument(b.unwrap_err().to_string()));
+        }
+        Ok(Response::new(GetBoolValueResponse { value: b.unwrap() }))
     }
     async fn get_proto_value(
         &self,
         request: Request<GetProtoValueRequest>,
     ) -> Result<tonic::Response<GetProtoValueResponse>, tonic::Status> {
         if self.proxy_mode {
-            println!("Got a request for GetProtoValue, proxying {:?}", request);
+            println!("Got a request for GetProtoValue, proxying");
             let mut proxy_req = Request::new(request.get_ref().clone());
             self.proxy_headers(&mut proxy_req, request.metadata());
             let resp = self.config_client.clone().get_proto_value(proxy_req).await;
@@ -74,7 +86,7 @@ impl ConfigurationService for Service {
             return resp;
         }
 
-        println!("Got a request for GetProtoValue, evaluating {:?}", request);
+        println!("Got a request for GetProtoValue, evaluating");
         let apikey = request.metadata().get(APIKEY).unwrap().to_owned();
         let inner = request.into_inner();
         let feature_data = self
@@ -93,8 +105,9 @@ impl ConfigurationService for Service {
             println!("error getting feature data {:?}", error);
             return Err(error);
         }
+        let eval_result = evaluate(feature_data.unwrap(), inner.context)?;
         Ok(Response::new(GetProtoValueResponse {
-            value: Option::None,
+            value: Some(eval_result.0),
         }))
     }
     async fn get_json_value(
@@ -102,7 +115,7 @@ impl ConfigurationService for Service {
         request: Request<GetJsonValueRequest>,
     ) -> Result<tonic::Response<GetJsonValueResponse>, tonic::Status> {
         if self.proxy_mode {
-            println!("Got a request for GetJSONValue, proxying {:?}", request);
+            println!("Got a request for GetJSONValue, proxying");
             let mut proxy_req = Request::new(request.get_ref().clone());
             self.proxy_headers(&mut proxy_req, request.metadata());
             let resp = self.config_client.clone().get_json_value(proxy_req).await;
@@ -112,7 +125,7 @@ impl ConfigurationService for Service {
             }
             return resp;
         }
-        println!("Got a request for GetJSONValue, evaluating {:?}", request);
+        println!("Got a request for GetJSONValue, evaluating");
         let apikey = request.metadata().get(APIKEY).unwrap().to_owned();
         let inner = request.into_inner();
         let feature_data = self
@@ -131,7 +144,15 @@ impl ConfigurationService for Service {
             println!("error getting feature data {:?}", error);
             return Err(error);
         }
-        Ok(Response::new(GetJsonValueResponse { value: Vec::new() }))
+        let eval_result = evaluate(feature_data.unwrap(), inner.context)?;
+        let struct_value: Result<Value, DecodeError> = types::from_any(&eval_result.0);
+        if struct_value.is_err() {
+            return Err(tonic::Status::invalid_argument(
+                struct_value.unwrap_err().to_string(),
+            ));
+        }
+        let vec = struct_value.unwrap().encode_to_vec();
+        Ok(Response::new(GetJsonValueResponse { value: vec }))
     }
 }
 
@@ -139,10 +160,10 @@ impl Service {
     // Sets the headers that we wish to forward to lekko. The apikey header is copied over as
     // the server needs it to authenticate the caller.
     fn proxy_headers<T>(&self, proxy_request: &mut Request<T>, incoming_headers: &MetadataMap) {
-        if let Some(apikey) = incoming_headers.get("apikey") {
+        if let Some(apikey) = incoming_headers.get(APIKEY) {
             proxy_request
                 .metadata_mut()
-                .append("apikey", apikey.to_owned());
+                .append(APIKEY, apikey.to_owned());
         }
     }
 }

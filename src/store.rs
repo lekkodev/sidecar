@@ -55,8 +55,8 @@ impl Store {
         }
         let success_resp = resp.unwrap().into_inner();
         println!(
-            "received feature contents for commit sha {}, resp {:?}",
-            success_resp.commit_sha, success_resp,
+            "received feature contents for commit sha {}",
+            success_resp.commit_sha,
         );
 
         for namespace in success_resp.namespaces {
