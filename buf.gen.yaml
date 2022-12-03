@@ -6,3 +6,8 @@ plugins:
       - file_descriptor_set
   - name: tonic
     out: src/gen
+  - name: prost-crate
+    out: src/gen
+    strategy: all
+    opt:
+      - no_features
