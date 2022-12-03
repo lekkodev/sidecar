@@ -20,12 +20,16 @@ use crate::{
     types::{self, FeatureRequestParams, RepositoryKey, APIKEY},
 };
 
+// This is the main rpc entrypoint into the sidecar. All host pods will communicate with the
+// sidecar via this Service, using the language-native SDK.
 pub struct Service {
     pub config_client:
         ConfigurationServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
     pub store: Store,
     pub proxy_mode: bool, // If false, the sidecar will attempt local evaluation
 }
+
+// TODO: Send batched flag evaluation metrics back to the backend after local evaluation.
 
 #[tonic::async_trait]
 impl ConfigurationService for Service {

@@ -13,7 +13,10 @@ use crate::{
     types::{FeatureRequestParams, APIKEY},
 };
 
-#[derive(Clone)]
+// Store acts as the abstraction for the storage and retrieval of all features.
+// For now, this object will defer to lekko backend's DistributionService to retrieve
+// features. However, in the future, this object is expected to manage the storage of
+// features in-memory.
 pub struct Store {
     dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
 }

@@ -10,10 +10,11 @@ use crate::gen::lekko::{
 
 use super::rules::check_rule;
 
-pub type EvalResult = (Any, Vec<usize>);
-
-// Returns the default value for now.
-pub fn evaluate(feature: Feature, context: HashMap<String, Value>) -> Result<EvalResult, Status> {
+// Performs evaluation of the feature tree using the given context.
+pub fn evaluate(
+    feature: Feature,
+    context: HashMap<String, Value>,
+) -> Result<(Any, Vec<usize>), Status> {
     let tree = feature.tree.ok_or(Status::internal("empty tree"))?;
     let default_value = tree
         .default
@@ -27,13 +28,15 @@ pub fn evaluate(feature: Feature, context: HashMap<String, Value>) -> Result<Eva
                     itertools::concat(vec![vec![i; 1], child_path]),
                 ));
             }
-            break;
+            break; // a child node passed, but no value was present. return the default value instead.
         }
         // Child evaluation did not pass, continue iterating
     }
     Ok((default_value, Vec::new()))
 }
 
+// traverse is a recursive function that performs tree-traversal on the feature tree,
+// evaluating the rules along the way.
 fn traverse(
     constraint: &Constraint,
     context: HashMap<String, Value>,
@@ -60,7 +63,7 @@ fn traverse(
                     itertools::concat(vec![vec![i; 1], child_path]),
                 ));
             }
-            break;
+            break; // a child node passed, but no value was present. return the current node's value instead.
         }
         // Child evaluation did not pass, continue iterating
     }

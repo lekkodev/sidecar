@@ -17,10 +17,14 @@ use crate::gen::lekko::{
 };
 
 // TODO: make all error messages contain dynamic variable info.
+// check_rule evaluates the rule using the given context to determine whether or not the rule passed.
+// it is a recursive method.
 pub fn check_rule(rule: Rule, context: HashMap<String, LekkoValue>) -> Result<bool, Status> {
     let r = rule.rule.ok_or(Status::internal("empty rule"))?;
     match r {
+        // Base case
         BoolConst(b) => return Ok(b),
+        // Recursive case
         Not(not_rule) => {
             let inner = check_rule(*not_rule, context);
             if inner.is_err() {
@@ -28,6 +32,7 @@ pub fn check_rule(rule: Rule, context: HashMap<String, LekkoValue>) -> Result<bo
             }
             return Ok(!inner.unwrap()); // not
         }
+        // Recursive case
         LogicalExpression(le_box) => {
             let le = *le_box;
             let first = check_rule(
@@ -48,6 +53,7 @@ pub fn check_rule(rule: Rule, context: HashMap<String, LekkoValue>) -> Result<bo
                 _ => return Err(Status::internal("unknown logical operator")),
             }
         }
+        // Base case
         Atom(a) => {
             let ctx_key = a.clone().context_key;
             let present = context.contains_key(&ctx_key);

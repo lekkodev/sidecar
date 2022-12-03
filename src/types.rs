@@ -2,6 +2,7 @@ use prost::{DecodeError, Message};
 use prost_types::Any;
 use tonic::metadata::{Ascii, MetadataValue};
 
+// Key that the lekko api key is stored under in rpc headers.
 pub const APIKEY: &str = "apikey";
 
 #[derive(Debug)]
