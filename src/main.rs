@@ -1,8 +1,6 @@
-use hyper_rustls::{HttpsConnectorBuilder};
+use hyper_rustls::HttpsConnectorBuilder;
 use sidecar::gen::lekko::backend::v1beta1::configuration_service_client::ConfigurationServiceClient;
-use sidecar::gen::lekko::backend::v1beta1::configuration_service_server::{
-    ConfigurationServiceServer,
-};
+use sidecar::gen::lekko::backend::v1beta1::configuration_service_server::ConfigurationServiceServer;
 use sidecar::gen::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 
 use sidecar::service::Service;
@@ -10,7 +8,6 @@ use sidecar::store::Store;
 use std::env;
 use tonic::codegen::CompressionEncoding;
 use tonic::transport::{Server, Uri};
-
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

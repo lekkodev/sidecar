@@ -1,11 +1,6 @@
-
-
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
-use tonic::{
-    body::BoxBody,
-    Request,
-};
+use tonic::{body::BoxBody, Request};
 
 use crate::{
     gen::lekko::{
@@ -37,7 +32,7 @@ impl Store {
     ) -> Result<Feature, tonic::Status> {
         println!("Store: get feature {:?}", request);
         let mut dist_req = Request::new(GetRepositoryContentsRequest {
-            repo_key: Option::Some(RepositoryKey {
+            repo_key: Some(RepositoryKey {
                 owner_name: request.rk.owner_name,
                 repo_name: request.rk.repo_name,
             }),

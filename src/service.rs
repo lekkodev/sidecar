@@ -13,7 +13,6 @@ use crate::{
     types::{FeatureRequestParams, RepositoryKey, APIKEY},
 };
 
-#[derive(Clone)]
 pub struct Service {
     pub config_client:
         ConfigurationServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
@@ -53,12 +52,9 @@ impl ConfigurationService for Service {
                 feature: inner.key,
             })
             .await;
-        if feature_data.is_err() {
-            println!(
-                "error getting feature data {:?}",
-                feature_data.clone().err().unwrap()
-            );
-            return Result::Err(feature_data.err().unwrap());
+        if let Err(error) = feature_data {
+            println!("error getting feature data {:?}", error);
+            return Result::Err(error);
         }
         Result::Ok(Response::new(GetBoolValueResponse { value: false }))
     }
@@ -93,12 +89,9 @@ impl ConfigurationService for Service {
                 feature: inner.key,
             })
             .await;
-        if feature_data.is_err() {
-            println!(
-                "error getting feature data {:?}",
-                feature_data.clone().err().unwrap()
-            );
-            return Result::Err(feature_data.err().unwrap());
+        if let Err(error) = feature_data {
+            println!("error getting feature data {:?}", error);
+            return Result::Err(error);
         }
         Result::Ok(Response::new(GetProtoValueResponse {
             value: Option::None,
@@ -134,12 +127,9 @@ impl ConfigurationService for Service {
                 feature: inner.key,
             })
             .await;
-        if feature_data.is_err() {
-            println!(
-                "error getting feature data {:?}",
-                feature_data.clone().err().unwrap()
-            );
-            return Result::Err(feature_data.err().unwrap());
+        if let Err(error) = feature_data {
+            println!("error getting feature data {:?}", error);
+            return Result::Err(error);
         }
         Result::Ok(Response::new(GetJsonValueResponse { value: Vec::new() }))
     }
