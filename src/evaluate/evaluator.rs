@@ -12,16 +12,15 @@ use super::rules::check_rule;
 
 // Performs evaluation of the feature tree using the given context.
 pub fn evaluate(
-    feature: Feature,
-    context: HashMap<String, Value>,
+    feature: &Feature,
+    context: &HashMap<String, Value>,
 ) -> Result<(Any, Vec<usize>), Status> {
-    let tree = feature.tree.ok_or(Status::internal("empty tree"))?;
-    let default_value = tree
-        .default
-        .ok_or(Status::internal("empty default value"))?;
+    let tree = feature
+        .tree
+        .as_ref()
+        .ok_or(Status::internal("empty tree"))?;
     for (i, constraint) in tree.constraints.iter().enumerate() {
-        let (child_val, child_passes, child_path) = traverse(constraint, context.clone())?;
-        if child_passes {
+        if let Some((child_val, child_path)) = traverse(constraint, context)? {
             if let Some(some_child_val) = child_val {
                 return Ok((
                     some_child_val,
@@ -32,40 +31,44 @@ pub fn evaluate(
         }
         // Child evaluation did not pass, continue iterating
     }
-    Ok((default_value, Vec::new()))
+    Ok((
+        tree.default
+            .as_ref()
+            .ok_or(Status::internal("empty default value"))?
+            .clone(),
+        Vec::new(),
+    ))
 }
 
 // traverse is a recursive function that performs tree-traversal on the feature tree,
 // evaluating the rules along the way.
 fn traverse(
     constraint: &Constraint,
-    context: HashMap<String, Value>,
-) -> Result<(Option<Any>, bool, Vec<usize>), Status> {
+    context: &HashMap<String, Value>,
+) -> Result<Option<(Option<Any>, Vec<usize>)>, Status> {
     let passes = check_rule(
         constraint
             .rule_ast
-            .clone()
+            .as_ref()
             .ok_or(Status::internal("empty rule ast"))?,
-        context.clone(),
+        &context,
     )?;
     if !passes {
         // if the rule fails, we avoid further traversal
-        return Ok((None, false, Vec::new()));
+        return Ok(None);
     }
     // rule passed
     for (i, child) in constraint.constraints.iter().enumerate() {
-        let (child_val, child_passes, child_path) = traverse(child, context.clone())?;
-        if child_passes {
+        if let Some((child_val, child_path)) = traverse(child, context)? {
             if let Some(some_child_val) = child_val {
-                return Ok((
+                return Ok(Some((
                     Some(some_child_val),
-                    true,
                     itertools::concat(vec![vec![i; 1], child_path]),
-                ));
+                )));
             }
             break; // a child node passed, but no value was present. return the current node's value instead.
         }
         // Child evaluation did not pass, continue iterating
     }
-    Ok((constraint.value.clone(), true, Vec::new()))
+    Ok(Some((constraint.value.clone(), Vec::new())))
 }

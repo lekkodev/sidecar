@@ -19,33 +19,36 @@ use crate::gen::lekko::{
 // TODO: make all error messages contain dynamic variable info.
 // check_rule evaluates the rule using the given context to determine whether or not the rule passed.
 // it is a recursive method.
-pub fn check_rule(rule: Rule, context: HashMap<String, LekkoValue>) -> Result<bool, Status> {
-    let r = rule.rule.ok_or(Status::internal("empty rule"))?;
+pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<bool, Status> {
+    // rule.rule.as_ref()
+    let r = rule.rule.as_ref().ok_or(Status::internal("empty rule"))?;
     match r {
         // Base case
-        BoolConst(b) => return Ok(b),
+        BoolConst(b) => return Ok(b.clone()),
         // Recursive case
         Not(not_rule) => {
-            let inner = check_rule(*not_rule, context);
+            let inner = check_rule(not_rule.as_ref(), context);
             if inner.is_err() {
                 return Err(inner.unwrap_err());
             }
             return Ok(!inner.unwrap()); // not
         }
         // Recursive case
-        LogicalExpression(le_box) => {
-            let le = *le_box;
+        LogicalExpression(le) => {
+            // let le = *le_box;
             let first = check_rule(
-                *(le.clone()
-                    .first_rule
-                    .ok_or(Status::internal("empty first rule"))?),
-                context.clone(),
+                le.first_rule
+                    .as_ref()
+                    .ok_or(Status::internal("empty first rule"))?
+                    .as_ref(),
+                context,
             )?;
             let second = check_rule(
-                *(le.clone()
-                    .second_rule
-                    .ok_or(Status::internal("empty second rule"))?),
-                context.clone(),
+                le.second_rule
+                    .as_ref()
+                    .ok_or(Status::internal("empty second rule"))?
+                    .as_ref(),
+                context,
             )?;
             match le.logical_operator() {
                 And => return Ok(first && second),
@@ -55,12 +58,12 @@ pub fn check_rule(rule: Rule, context: HashMap<String, LekkoValue>) -> Result<bo
         }
         // Base case
         Atom(a) => {
-            let ctx_key = a.clone().context_key;
-            let present = context.contains_key(&ctx_key);
-            if a.clone().comparison_operator().eq(&CmpOp::Present) {
+            let ctx_key = &a.context_key;
+            let present = context.contains_key(ctx_key);
+            if a.comparison_operator().eq(&CmpOp::Present) {
                 return Ok(present);
             }
-            if a.clone().comparison_value.is_none() {
+            if a.comparison_value.is_none() {
                 return Err(Status::internal("empty comparison value"));
             }
             if !present {
@@ -68,42 +71,42 @@ pub fn check_rule(rule: Rule, context: HashMap<String, LekkoValue>) -> Result<bo
                 // it is not present, return false.
                 return Ok(false);
             }
-            let rule_kind = &a
-                .clone()
+            let rule_kind = a
                 .comparison_value
+                .as_ref()
                 .unwrap()
                 .kind
+                .as_ref()
                 .ok_or(Status::internal("empty rule value kind"))?;
-            let ctx_kind = &context
-                .clone()
-                .get(&ctx_key)
+            let ctx_kind = context
+                .get(ctx_key)
                 .ok_or(Status::internal("empty ctx value"))?
                 .kind
-                .clone()
+                .as_ref()
                 .ok_or(Status::internal("empty ctx value kind"))?;
             match a.comparison_operator() {
-                CmpOp::Equals => return check_equals_cmp(rule_kind, ctx_kind),
+                CmpOp::Equals => return check_equals_cmp(&rule_kind, &ctx_kind),
                 CmpOp::LessThan => {
-                    return check_num_cmp(a.comparison_operator(), rule_kind, ctx_kind)
+                    return check_num_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
                 }
                 CmpOp::LessThanOrEquals => {
-                    return check_num_cmp(a.comparison_operator(), rule_kind, ctx_kind)
+                    return check_num_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
                 }
                 CmpOp::GreaterThan => {
-                    return check_num_cmp(a.comparison_operator(), rule_kind, ctx_kind)
+                    return check_num_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
                 }
                 CmpOp::GreaterThanOrEquals => {
-                    return check_num_cmp(a.comparison_operator(), rule_kind, ctx_kind)
+                    return check_num_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
                 }
-                CmpOp::ContainedWithin => return check_list_cmp(rule_kind, ctx_kind),
+                CmpOp::ContainedWithin => return check_list_cmp(&rule_kind, &ctx_kind),
                 CmpOp::StartsWith => {
-                    return check_str_cmp(a.comparison_operator(), rule_kind, ctx_kind)
+                    return check_str_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
                 }
                 CmpOp::EndsWith => {
-                    return check_str_cmp(a.comparison_operator(), rule_kind, ctx_kind)
+                    return check_str_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
                 }
                 CmpOp::Contains => {
-                    return check_str_cmp(a.comparison_operator(), rule_kind, ctx_kind)
+                    return check_str_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
                 }
                 CmpOp::Present => return Err(Status::internal("present should be handled above")),
                 _ => return Err(Status::internal("unknown comparison operator")),
@@ -133,7 +136,7 @@ fn check_equals_cmp(rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Stat
     }
 }
 
-fn check_num_cmp(co: CmpOp, rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Status> {
+fn check_num_cmp(co: &CmpOp, rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Status> {
     let rule_num = get_number(rule_kind)?;
     let ctx_num = get_lekko_number(ctx_kind)?;
     match co {
@@ -149,9 +152,9 @@ fn check_list_cmp(rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Status
     match rule_kind {
         Kind::ListValue(rule_list) => {
             for rule_elem in &rule_list.values {
-                let rule_elem_kind = &rule_elem
-                    .clone()
+                let rule_elem_kind = rule_elem
                     .kind
+                    .as_ref()
                     .ok_or(Status::internal("empty rule value kind"))?;
                 let elem_equal = check_equals_cmp(rule_elem_kind, ctx_kind);
                 if elem_equal.is_ok() && elem_equal.unwrap() {
@@ -164,7 +167,7 @@ fn check_list_cmp(rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Status
     }
 }
 
-fn check_str_cmp(co: CmpOp, rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Status> {
+fn check_str_cmp(co: &CmpOp, rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Status> {
     let rule_str = get_string(rule_kind)?;
     let ctx_str = get_lekko_string(ctx_kind)?;
     match co {

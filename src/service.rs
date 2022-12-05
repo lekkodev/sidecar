@@ -67,7 +67,7 @@ impl ConfigurationService for Service {
             println!("error getting feature data {:?}", error);
             return Err(error);
         }
-        let eval_result = evaluate(feature_data.unwrap(), inner.context)?;
+        let eval_result = evaluate(&feature_data.unwrap(), &inner.context)?;
         let b: Result<bool, DecodeError> = types::from_any(&eval_result.0);
         if b.is_err() {
             return Err(tonic::Status::invalid_argument(b.unwrap_err().to_string()));
@@ -109,7 +109,7 @@ impl ConfigurationService for Service {
             println!("error getting feature data {:?}", error);
             return Err(error);
         }
-        let eval_result = evaluate(feature_data.unwrap(), inner.context)?;
+        let eval_result = evaluate(&feature_data.unwrap(), &inner.context)?;
         Ok(Response::new(GetProtoValueResponse {
             value: Some(eval_result.0),
         }))
@@ -148,12 +148,10 @@ impl ConfigurationService for Service {
             println!("error getting feature data {:?}", error);
             return Err(error);
         }
-        let eval_result = evaluate(feature_data.unwrap(), inner.context)?;
+        let eval_result = evaluate(&feature_data.unwrap(), &inner.context)?;
         let struct_value: Result<Value, DecodeError> = types::from_any(&eval_result.0);
-        if struct_value.is_err() {
-            return Err(tonic::Status::invalid_argument(
-                struct_value.unwrap_err().to_string(),
-            ));
+        if let Err(e) = struct_value {
+            return Err(tonic::Status::invalid_argument(e.to_string()));
         }
         let vec = struct_value.unwrap().encode_to_vec();
         Ok(Response::new(GetJsonValueResponse { value: vec }))
