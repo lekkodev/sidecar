@@ -700,6 +700,7 @@ version = "0.1.0"
 dependencies = [
  "hyper",
  "hyper-rustls",
+ "itertools",
  "prost",
  "prost-types",
  "tokio",

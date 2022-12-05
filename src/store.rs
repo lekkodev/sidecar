@@ -13,7 +13,10 @@ use crate::{
     types::{FeatureRequestParams, APIKEY},
 };
 
-#[derive(Clone)]
+// Store acts as the abstraction for the storage and retrieval of all features.
+// For now, this object will defer to lekko backend's DistributionService to retrieve
+// features. However, in the future, this object is expected to manage the storage of
+// features in-memory.
 pub struct Store {
     dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
 }
@@ -55,8 +58,8 @@ impl Store {
         }
         let success_resp = resp.unwrap().into_inner();
         println!(
-            "received feature contents for commit sha {}, resp {:?}",
-            success_resp.commit_sha, success_resp,
+            "received feature contents for commit sha {}",
+            success_resp.commit_sha,
         );
 
         for namespace in success_resp.namespaces {
