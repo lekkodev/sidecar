@@ -13,3 +13,4 @@ tonic = { version= "0.8", features=["tls", "gzip"]}
 hyper-rustls = { version="0.23", features=["webpki-roots", "http2"] }
 hyper = { version="0.14", features=["full"] }
 itertools = "0.10.5"
+futures = "0.3.25"
