@@ -90,10 +90,9 @@ impl Metrics {
         >,
     ) {
         for received in rx {
-            println!("received a flag eval event in the channel {:?}", received);
             let resp = Metrics::send_flag_evaluation(dist_client.clone(), received).await;
             match resp {
-                Ok(_) => println!("successfully send flag evaluation event"),
+                Ok(_) => println!("successfully sent flag evaluation event"),
                 Err(e) => println!("failed sending flag evaluation event {:?}", e.message()),
             }
         }
@@ -105,17 +104,14 @@ impl Metrics {
         >,
         event: TrackFlagEvaluationEvent,
     ) -> Result<(), tonic::Status> {
-        println!("trying to send metrics, {:?}", event.event);
         let mut req = Request::new(SendFlagEvaluationMetricsRequest {
             events: vec![event.event],
         });
         req.metadata_mut().append(APIKEY, event.apikey);
-        let resp = dist_client.clone().send_flag_evaluation_metrics(req).await;
-        if let Err(e) = resp {
-            println!("error sending flag evaluation event {:?}", e);
-            return Err(e);
-        }
-        println!("successfully sent flag evaluation event");
+        let _resp = dist_client
+            .clone()
+            .send_flag_evaluation_metrics(req)
+            .await?;
         Ok(())
     }
 
