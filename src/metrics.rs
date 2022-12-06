@@ -56,32 +56,30 @@ impl Metrics {
     pub fn track_flag_evaluation(
         &self,
         rk: &RepositoryKey,
-        namespace_name: &String,
+        namespace_name: &str,
         feature_data: &FeatureData,
         context: &HashMap<String, Value>,
-        result_path: &Vec<usize>,
+        result_path: &[usize],
         apikey: &MetadataValue<Ascii>,
-    ) -> () {
+    ) {
         let event = FlagEvaluationEvent {
             repo_key: Some(rk.clone()),
             commit_sha: feature_data.commit_sha.clone(),
             feature_sha: feature_data.feature_sha.clone(),
-            namespace_name: namespace_name.clone(),
+            namespace_name: namespace_name.to_owned(),
             feature_name: feature_data.feature.key.clone(),
             context_keys: context
                 .iter()
-                .map(|(k, v)| {
-                    return ContextKey {
-                        key: k.clone(),
-                        r#type: Metrics::value_to_type(v),
-                    };
+                .map(|(k, v)| ContextKey {
+                    key: k.clone(),
+                    r#type: Metrics::value_to_type(v),
                 })
                 .collect_vec(),
             result_path: result_path.iter().map(|e| *e as i32).collect_vec(),
         };
         let _r = self.tx.clone().send(TrackFlagEvaluationEvent {
             apikey: apikey.clone(),
-            event: event,
+            event,
         });
     }
 

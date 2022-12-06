@@ -54,12 +54,12 @@ impl ConfigurationService for Service {
         let apikey = request
             .metadata()
             .get(APIKEY)
-            .ok_or(Status::invalid_argument("no apikey header provided"))?
+            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
             .to_owned();
         let inner = request.into_inner();
         let rk = inner
             .repo_key
-            .ok_or(Status::invalid_argument("no repo key provided"))?;
+            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
         let feature_data = self
             .store
             .get_feature(FeatureRequestParams {
@@ -109,12 +109,12 @@ impl ConfigurationService for Service {
         let apikey = request
             .metadata()
             .get(APIKEY)
-            .ok_or(Status::invalid_argument("no apikey header provided"))?
+            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
             .to_owned();
         let inner = request.into_inner();
         let rk = inner
             .repo_key
-            .ok_or(Status::invalid_argument("no repo key provided"))?;
+            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
         let feature_data = self
             .store
             .get_feature(FeatureRequestParams {
@@ -161,12 +161,12 @@ impl ConfigurationService for Service {
         let apikey = request
             .metadata()
             .get(APIKEY)
-            .ok_or(Status::invalid_argument("no apikey header provided"))?
+            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
             .to_owned();
         let inner = request.into_inner();
         let rk = inner
             .repo_key
-            .ok_or(Status::invalid_argument("no repo key provided"))?;
+            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
         let feature_data = self
             .store
             .get_feature(FeatureRequestParams {
