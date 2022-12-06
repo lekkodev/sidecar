@@ -73,6 +73,6 @@ impl Store {
                 }
             }
         }
-        return Err(tonic::Status::not_found("feature not found"));
+        Err(tonic::Status::not_found("feature not found"))
     }
 }

@@ -42,6 +42,10 @@ format:
 lint:
 	cargo clippy --all-targets --all-features -- -D warnings
 
+.PHONY: generate
+generate:
+	buf generate --template buf.gen.yaml buf.build/lekkodev/cli
+
 
 .PHONY: all
 all: build test format lint

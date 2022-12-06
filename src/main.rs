@@ -47,9 +47,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .accept_compressed(CompressionEncoding::Gzip);
     let store = Store::new(dist_client);
     let service = ConfigurationServiceServer::new(Service {
-        config_client: config_client,
-        store: store,
-        proxy_mode: proxy_mode,
+        config_client,
+        store,
+        proxy_mode,
     })
     .send_compressed(CompressionEncoding::Gzip)
     .accept_compressed(CompressionEncoding::Gzip);

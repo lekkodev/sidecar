@@ -18,7 +18,7 @@ pub fn evaluate(
     let tree = feature
         .tree
         .as_ref()
-        .ok_or(Status::internal("empty tree"))?;
+        .ok_or_else(|| Status::internal("empty tree"))?;
     for (i, constraint) in tree.constraints.iter().enumerate() {
         if let Some((child_val, child_path)) = traverse(constraint, context)? {
             if let Some(some_child_val) = child_val {
@@ -34,24 +34,31 @@ pub fn evaluate(
     Ok((
         tree.default
             .as_ref()
-            .ok_or(Status::internal("empty default value"))?
+            .ok_or_else(|| Status::internal("empty default value"))?
             .clone(),
         Vec::new(),
     ))
 }
 
+// PassedEvaluation contains information when a traversal of a portion of the feature tree passes.
+// It contains an optional default value, and a path of which subtrees were evaluated.
+// If the default value is None, the caller's default value is meant to be returned.
+type PassedEvaluation = (Option<Any>, Vec<usize>);
+
 // traverse is a recursive function that performs tree-traversal on the feature tree,
 // evaluating the rules along the way.
+// The option of PassedEvaluation denotes whether the traversal of this constraint resulted
+// in a pass.
 fn traverse(
     constraint: &Constraint,
     context: &HashMap<String, Value>,
-) -> Result<Option<(Option<Any>, Vec<usize>)>, Status> {
+) -> Result<Option<PassedEvaluation>, Status> {
     let passes = check_rule(
         constraint
             .rule_ast
             .as_ref()
-            .ok_or(Status::internal("empty rule ast"))?,
-        &context,
+            .ok_or_else(|| Status::internal("empty rule ast"))?,
+        context,
     )?;
     if !passes {
         // if the rule fails, we avoid further traversal

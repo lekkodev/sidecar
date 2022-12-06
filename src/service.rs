@@ -69,8 +69,8 @@ impl ConfigurationService for Service {
         }
         let eval_result = evaluate(&feature_data.unwrap(), &inner.context)?;
         let b: Result<bool, DecodeError> = types::from_any(&eval_result.0);
-        if b.is_err() {
-            return Err(tonic::Status::invalid_argument(b.unwrap_err().to_string()));
+        if let Err(err) = b {
+            return Err(tonic::Status::invalid_argument(err.to_string()));
         }
         Ok(Response::new(GetBoolValueResponse { value: b.unwrap() }))
     }

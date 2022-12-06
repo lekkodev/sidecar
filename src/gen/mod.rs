@@ -1,24 +1,8 @@
-// @generated
-pub mod lekko {
-    pub mod backend {
-        // @@protoc_insertion_point(attribute:lekko.backend.v1beta1)
-        pub mod v1beta1 {
-            include!("lekko.backend.v1beta1.rs");
-            // @@protoc_insertion_point(lekko.backend.v1beta1)
-        }
-    }
-    pub mod feature {
-        // @@protoc_insertion_point(attribute:lekko.feature.v1beta1)
-        pub mod v1beta1 {
-            include!("lekko.feature.v1beta1.rs");
-            // @@protoc_insertion_point(lekko.feature.v1beta1)
-        }
-    }
-    pub mod rules {
-        // @@protoc_insertion_point(attribute:lekko.rules.v1beta2)
-        pub mod v1beta2 {
-            include!("lekko.rules.v1beta2.rs");
-            // @@protoc_insertion_point(lekko.rules.v1beta2)
-        }
-    }
-}
+// This is the generated code from the cli repo & buf module.
+// Run `make generate` to recreate.
+// This file re-exports an auto-generated include file by prost-gen-prost-crate but adds
+// clippy allows, which is incorrect b/c protobuf generated code doesn't implement Eq by
+// default since they want you to use protobuf's equality specifically.
+#[allow(clippy::derive_partial_eq_without_eq)]
+mod mod_gen;
+pub use mod_gen::*;
