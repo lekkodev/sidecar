@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dist_client = DistributionServiceClient::with_origin(http_client, lekko_addr)
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
-    let store = Store::new(dist_client);
+    let store = Store::new(dist_client, config_client.clone());
     let service = ConfigurationServiceServer::new(Service {
         config_client,
         store,

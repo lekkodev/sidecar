@@ -14,7 +14,7 @@ use crate::{
         configuration_service_client::ConfigurationServiceClient,
         configuration_service_server::ConfigurationService, GetBoolValueRequest,
         GetBoolValueResponse, GetJsonValueRequest, GetJsonValueResponse, GetProtoValueRequest,
-        GetProtoValueResponse,
+        GetProtoValueResponse, RegisterRequest, RegisterResponse,
     },
     store::Store,
     types::{self, FeatureRequestParams, RepositoryKey, APIKEY},
@@ -33,6 +33,17 @@ pub struct Service {
 
 #[tonic::async_trait]
 impl ConfigurationService for Service {
+    async fn register(
+        &self,
+        request: Request<RegisterRequest>,
+    ) -> Result<tonic::Response<RegisterResponse>, tonic::Status> {
+        let apikey = request.metadata().get(APIKEY).unwrap().clone();
+        let request = request.into_inner();
+        self.store
+            .register(request.repo_key.unwrap(), &request.namespace_list, apikey)
+            .await?;
+        Ok(Response::new(RegisterResponse::default()))
+    }
     async fn get_bool_value(
         &self,
         request: Request<GetBoolValueRequest>,
