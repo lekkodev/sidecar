@@ -1,13 +1,13 @@
-use std::{
-    collections::HashMap,
-    sync::mpsc::{sync_channel, Receiver, SyncSender},
-    thread::spawn,
-};
+use std::collections::HashMap;
 
-use futures::executor::block_on;
+use futures::{stream::FuturesUnordered, StreamExt};
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
 use itertools::Itertools;
+use tokio::{
+    select, spawn,
+    sync::mpsc::{channel, Receiver, Sender},
+};
 use tonic::{
     body::BoxBody,
     metadata::{Ascii, MetadataValue},
@@ -27,7 +27,7 @@ use crate::{
 // Component responsible for receiving evaluation metrics as they come in
 // and delivering them to lekko backend.
 pub struct Metrics {
-    tx: SyncSender<TrackFlagEvaluationEvent>,
+    tx: Sender<TrackFlagEvaluationEvent>,
 }
 
 #[derive(Debug)]
@@ -43,11 +43,14 @@ impl Metrics {
         >,
     ) -> Self {
         // create a sync channel to send and receive metrics.
-        let (tx, rx) = sync_channel(3);
+        // approximate size of each event is 1KB. this buffer is sized to not exceed 1MB total memory.
+        // This can be modified as necessary.
+        let (tx, rx) = channel(1024);
         // spawn a new thread that receives metrics and sends them over rpc
-        spawn(move || {
-            block_on(Metrics::worker(rx, dist_client));
+        spawn(async {
+            Metrics::worker(rx, dist_client).await;
         });
+
         Self { tx }
     }
 
@@ -77,23 +80,42 @@ impl Metrics {
                 .collect_vec(),
             result_path: result_path.iter().map(|e| *e as i32).collect_vec(),
         };
-        let _r = self.tx.clone().send(TrackFlagEvaluationEvent {
+        // Try to send the event over the channel. This can fail if (a) the buffer is full, or (b) the
+        // receiver has dropped or been closed. In either case, we drop the metric and print the error.
+        // try_send is non-blocking.
+        let result = self.tx.try_send(TrackFlagEvaluationEvent {
             apikey: apikey.clone(),
             event,
         });
+        if let Err(e) = result {
+            println!(
+                "failed to send metrics event on mpsc channel {:?}",
+                e.to_string()
+            );
+        }
     }
 
     async fn worker(
-        rx: Receiver<TrackFlagEvaluationEvent>,
+        mut rx: Receiver<TrackFlagEvaluationEvent>,
         dist_client: DistributionServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
     ) {
-        for received in rx {
-            let resp = Metrics::send_flag_evaluation(dist_client.clone(), received).await;
-            match resp {
-                Ok(_) => println!("successfully sent flag evaluation event"),
-                Err(e) => println!("failed sending flag evaluation event {:?}", e.message()),
+        // Pool of futures allows this thread to not block on I/O, sending out multiple
+        // metrics at once while also receiving from the channel.
+        let mut futures = FuturesUnordered::new();
+
+        loop {
+            select! {
+                Some(event) = rx.recv() => {
+                    futures.push(Metrics::send_flag_evaluation(dist_client.clone(), event));
+                },
+                Some(result) = futures.next() => {
+                    if let Err(e) = result {
+                        println!("error handling send flag evaluation future {:?}", e);
+                    }
+                },
+                else => {},
             }
         }
     }
