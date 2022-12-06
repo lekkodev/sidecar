@@ -11,3 +11,4 @@ plugins:
     strategy: all
     opt:
       - no_features
+      - include_file=mod_gen.rs

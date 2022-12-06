@@ -21,39 +21,36 @@ use crate::gen::lekko::{
 // it is a recursive method.
 pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<bool, Status> {
     // rule.rule.as_ref()
-    let r = rule.rule.as_ref().ok_or(Status::internal("empty rule"))?;
+    let r = rule
+        .rule
+        .as_ref()
+        .ok_or_else(|| Status::internal("empty rule"))?;
     match r {
         // Base case
-        BoolConst(b) => return Ok(b.clone()),
+        BoolConst(b) => Ok(*b),
         // Recursive case
-        Not(not_rule) => {
-            let inner = check_rule(not_rule.as_ref(), context);
-            if inner.is_err() {
-                return Err(inner.unwrap_err());
-            }
-            return Ok(!inner.unwrap()); // not
-        }
+        Not(not_rule) => Ok(!check_rule(not_rule.as_ref(), context)?),
         // Recursive case
         LogicalExpression(le) => {
             // let le = *le_box;
             let first = check_rule(
                 le.first_rule
                     .as_ref()
-                    .ok_or(Status::internal("empty first rule"))?
+                    .ok_or_else(|| Status::internal("empty first rule"))?
                     .as_ref(),
                 context,
             )?;
             let second = check_rule(
                 le.second_rule
                     .as_ref()
-                    .ok_or(Status::internal("empty second rule"))?
+                    .ok_or_else(|| Status::internal("empty second rule"))?
                     .as_ref(),
                 context,
             )?;
             match le.logical_operator() {
-                And => return Ok(first && second),
-                Or => return Ok(first || second),
-                _ => return Err(Status::internal("unknown logical operator")),
+                And => Ok(first && second),
+                Or => Ok(first || second),
+                _ => Err(Status::internal("unknown logical operator")),
             }
         }
         // Base case
@@ -77,39 +74,29 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
                 .unwrap()
                 .kind
                 .as_ref()
-                .ok_or(Status::internal("empty rule value kind"))?;
+                .ok_or_else(|| Status::internal("empty rule value kind"))?;
             let ctx_kind = context
                 .get(ctx_key)
-                .ok_or(Status::internal("empty ctx value"))?
+                .ok_or_else(|| Status::internal("empty ctx value"))?
                 .kind
                 .as_ref()
-                .ok_or(Status::internal("empty ctx value kind"))?;
+                .ok_or_else(|| Status::internal("empty ctx value kind"))?;
             match a.comparison_operator() {
-                CmpOp::Equals => return check_equals_cmp(&rule_kind, &ctx_kind),
-                CmpOp::LessThan => {
-                    return check_num_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
-                }
+                CmpOp::Equals => check_equals_cmp(rule_kind, ctx_kind),
+                CmpOp::LessThan => check_num_cmp(&a.comparison_operator(), rule_kind, ctx_kind),
                 CmpOp::LessThanOrEquals => {
-                    return check_num_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
+                    check_num_cmp(&a.comparison_operator(), rule_kind, ctx_kind)
                 }
-                CmpOp::GreaterThan => {
-                    return check_num_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
-                }
+                CmpOp::GreaterThan => check_num_cmp(&a.comparison_operator(), rule_kind, ctx_kind),
                 CmpOp::GreaterThanOrEquals => {
-                    return check_num_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
+                    check_num_cmp(&a.comparison_operator(), rule_kind, ctx_kind)
                 }
-                CmpOp::ContainedWithin => return check_list_cmp(&rule_kind, &ctx_kind),
-                CmpOp::StartsWith => {
-                    return check_str_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
-                }
-                CmpOp::EndsWith => {
-                    return check_str_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
-                }
-                CmpOp::Contains => {
-                    return check_str_cmp(&a.comparison_operator(), &rule_kind, &ctx_kind)
-                }
-                CmpOp::Present => return Err(Status::internal("present should be handled above")),
-                _ => return Err(Status::internal("unknown comparison operator")),
+                CmpOp::ContainedWithin => check_list_cmp(rule_kind, ctx_kind),
+                CmpOp::StartsWith => check_str_cmp(&a.comparison_operator(), rule_kind, ctx_kind),
+                CmpOp::EndsWith => check_str_cmp(&a.comparison_operator(), rule_kind, ctx_kind),
+                CmpOp::Contains => check_str_cmp(&a.comparison_operator(), rule_kind, ctx_kind),
+                CmpOp::Present => Err(Status::internal("present should be handled above")),
+                _ => Err(Status::internal("unknown comparison operator")),
             }
         }
     }
@@ -118,21 +105,19 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
 fn check_equals_cmp(rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Status> {
     match rule_kind {
         BoolValue(rule_bool) => match ctx_kind {
-            backend::v1beta1::value::Kind::BoolValue(ctx_bool) => return Ok(rule_bool == ctx_bool),
-            _ => return Err(Status::invalid_argument("type mismatch")),
+            backend::v1beta1::value::Kind::BoolValue(ctx_bool) => Ok(rule_bool == ctx_bool),
+            _ => Err(Status::invalid_argument("type mismatch")),
         },
         NumberValue(rule_num) => match ctx_kind {
-            backend::v1beta1::value::Kind::IntValue(ctx_num) => {
-                return Ok(*rule_num == *ctx_num as f64)
-            }
-            backend::v1beta1::value::Kind::DoubleValue(ctx_num) => return Ok(rule_num == ctx_num),
-            _ => return Err(Status::invalid_argument("type mismatch")),
+            backend::v1beta1::value::Kind::IntValue(ctx_num) => Ok(*rule_num == *ctx_num as f64),
+            backend::v1beta1::value::Kind::DoubleValue(ctx_num) => Ok(rule_num == ctx_num),
+            _ => Err(Status::invalid_argument("type mismatch")),
         },
         StringValue(rule_str) => match ctx_kind {
-            backend::v1beta1::value::Kind::StringValue(ctx_str) => return Ok(rule_str == ctx_str),
-            _ => return Err(Status::invalid_argument("type mismatch")),
+            backend::v1beta1::value::Kind::StringValue(ctx_str) => Ok(rule_str == ctx_str),
+            _ => Err(Status::invalid_argument("type mismatch")),
         },
-        _ => return Err(Status::internal("unsupported rule value kind")),
+        _ => Err(Status::internal("unsupported rule value kind")),
     }
 }
 
@@ -140,11 +125,11 @@ fn check_num_cmp(co: &CmpOp, rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<b
     let rule_num = get_number(rule_kind)?;
     let ctx_num = get_lekko_number(ctx_kind)?;
     match co {
-        CmpOp::LessThan => return Ok(ctx_num < rule_num),
-        CmpOp::LessThanOrEquals => return Ok(ctx_num <= rule_num),
-        CmpOp::GreaterThan => return Ok(ctx_num > rule_num),
-        CmpOp::GreaterThanOrEquals => return Ok(ctx_num >= rule_num),
-        _ => return Err(Status::internal("invalid comparison operator")),
+        CmpOp::LessThan => Ok(ctx_num < rule_num),
+        CmpOp::LessThanOrEquals => Ok(ctx_num <= rule_num),
+        CmpOp::GreaterThan => Ok(ctx_num > rule_num),
+        CmpOp::GreaterThanOrEquals => Ok(ctx_num >= rule_num),
+        _ => Err(Status::internal("invalid comparison operator")),
     }
 }
 
@@ -155,15 +140,15 @@ fn check_list_cmp(rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Status
                 let rule_elem_kind = rule_elem
                     .kind
                     .as_ref()
-                    .ok_or(Status::internal("empty rule value kind"))?;
+                    .ok_or_else(|| Status::internal("empty rule value kind"))?;
                 let elem_equal = check_equals_cmp(rule_elem_kind, ctx_kind);
                 if elem_equal.is_ok() && elem_equal.unwrap() {
                     return Ok(true);
                 }
             }
-            return Ok(false);
+            Ok(false)
         }
-        _ => return Err(Status::invalid_argument("type mismatch")),
+        _ => Err(Status::invalid_argument("type mismatch")),
     }
 }
 
@@ -171,38 +156,38 @@ fn check_str_cmp(co: &CmpOp, rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<b
     let rule_str = get_string(rule_kind)?;
     let ctx_str = get_lekko_string(ctx_kind)?;
     match co {
-        CmpOp::StartsWith => return Ok(ctx_str.starts_with(&rule_str)),
-        CmpOp::EndsWith => return Ok(ctx_str.ends_with(&rule_str)),
-        CmpOp::Contains => return Ok(ctx_str.contains(&rule_str)),
-        _ => return Err(Status::internal("invalid comparison operator")),
+        CmpOp::StartsWith => Ok(ctx_str.starts_with(&rule_str)),
+        CmpOp::EndsWith => Ok(ctx_str.ends_with(&rule_str)),
+        CmpOp::Contains => Ok(ctx_str.contains(&rule_str)),
+        _ => Err(Status::internal("invalid comparison operator")),
     }
 }
 
 fn get_number(kind: &Kind) -> Result<f64, Status> {
     match kind {
-        NumberValue(num_value) => return Ok(*num_value),
-        _ => return Err(Status::invalid_argument("type mismatch")),
+        NumberValue(num_value) => Ok(*num_value),
+        _ => Err(Status::invalid_argument("type mismatch")),
     }
 }
 
 fn get_lekko_number(kind: &LekkoKind) -> Result<f64, Status> {
     match kind {
-        LekkoKind::IntValue(int_value) => return Ok(*int_value as f64),
-        LekkoKind::DoubleValue(double_value) => return Ok(*double_value),
-        _ => return Err(Status::invalid_argument("type mismatch")),
+        LekkoKind::IntValue(int_value) => Ok(*int_value as f64),
+        LekkoKind::DoubleValue(double_value) => Ok(*double_value),
+        _ => Err(Status::invalid_argument("type mismatch")),
     }
 }
 
 fn get_string(kind: &Kind) -> Result<String, Status> {
     match kind {
-        StringValue(str) => return Ok(str.clone()),
-        _ => return Err(Status::invalid_argument("type mismatch")),
+        StringValue(str) => Ok(str.clone()),
+        _ => Err(Status::invalid_argument("type mismatch")),
     }
 }
 
 fn get_lekko_string(kind: &LekkoKind) -> Result<String, Status> {
     match kind {
-        LekkoKind::StringValue(str_value) => return Ok(str_value.clone()),
-        _ => return Err(Status::invalid_argument("type mismatch")),
+        LekkoKind::StringValue(str_value) => Ok(str_value.clone()),
+        _ => Err(Status::invalid_argument("type mismatch")),
     }
 }
