@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse::<Uri>()?;
 
     // Setting proxy_mode to false will ensure that we perform rules evaluation locally in the sidecar.
-    let proxy_mode = false;
+    let proxy_mode = true;
     println!("lekko address: {}\nProxy mode: {}", lekko_addr, proxy_mode);
 
     let http_client = hyper::Client::builder().build(
