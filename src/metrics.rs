@@ -107,6 +107,8 @@ impl Metrics {
 
         loop {
             select! {
+                // recv returns None if the channel is closed or the sender goes out of scope. We
+                // don't expect this to happen.
                 Some(event) = rx.recv() => {
                     futures.push(Metrics::send_flag_evaluation(dist_client.clone(), event));
                 },
@@ -115,7 +117,7 @@ impl Metrics {
                         println!("error handling send flag evaluation future {:?}", e);
                     }
                 },
-                else => {},
+                else => break,
             }
         }
     }
@@ -130,7 +132,7 @@ impl Metrics {
             events: vec![event.event],
         });
         req.metadata_mut().append(APIKEY, event.apikey);
-        let _resp = dist_client
+        dist_client
             .clone()
             .send_flag_evaluation_metrics(req)
             .await?;
