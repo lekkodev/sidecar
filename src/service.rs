@@ -3,9 +3,9 @@ use hyper_rustls::HttpsConnector;
 
 use prost::{
     encoding::bool::{self},
-    DecodeError, Message,
+    DecodeError,
 };
-use prost_types::Value;
+use prost_types::{value::Kind, Value};
 use tonic::{body::BoxBody, metadata::MetadataMap, Request, Response, Status};
 
 use crate::{
@@ -190,13 +190,59 @@ impl ConfigurationService for Service {
             &eval_result.1,
             &apikey,
         );
-        let struct_value: Result<Value, DecodeError> = types::from_any(&eval_result.0);
-        if let Err(e) = struct_value {
-            return Err(tonic::Status::internal(e.to_string()));
-        }
-        let vec = struct_value.unwrap().encode_to_vec();
-        Ok(Response::new(GetJsonValueResponse { value: vec }))
+        let struct_value: Value = match types::from_any(&eval_result.0) {
+            Err(err) => {
+                println!("error from decoding from any {:?}", err);
+                return Err(Status::internal("invalid internal protobuf type"));
+            }
+            Ok(v) => v,
+        };
+
+        Ok(Response::new(GetJsonValueResponse {
+            value: serde_json::to_vec(&ValueWrapper(&struct_value)).map_err(|e| {
+                Status::internal("failure serializing json ".to_owned() + &e.to_string())
+            })?,
+        }))
     }
+}
+
+fn serialize_value<S>(value: &prost_types::Value, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    match &value.kind {
+        None | Some(Kind::NullValue(_)) => serializer.serialize_none(),
+        Some(Kind::NumberValue(f)) => serializer.serialize_f64(*f),
+        Some(Kind::StringValue(s)) => serializer.serialize_str(s),
+        Some(Kind::BoolValue(b)) => serializer.serialize_bool(*b),
+        Some(Kind::StructValue(st)) => serialize_struct(st, serializer),
+        Some(Kind::ListValue(l)) => serialize_list(l, serializer),
+    }
+}
+
+pub struct ValueWrapper<'de>(&'de prost_types::Value);
+
+impl<'de> serde::Serialize for ValueWrapper<'de> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ::serde::Serializer,
+    {
+        serialize_value(self.0, serializer)
+    }
+}
+
+fn serialize_struct<S>(st: &prost_types::Struct, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    serializer.collect_map(st.fields.iter().map(|(k, v)| (k, ValueWrapper(v))))
+}
+
+fn serialize_list<S>(st: &prost_types::ListValue, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    serializer.collect_seq(st.values.iter().map(ValueWrapper))
 }
 
 impl Service {
