@@ -3,9 +3,9 @@ use hyper_rustls::HttpsConnector;
 
 use prost::{
     encoding::bool::{self},
-    DecodeError, Message,
+    DecodeError,
 };
-use prost_types::Value;
+use prost_types::{value::Kind, Value};
 use tonic::{body::BoxBody, metadata::MetadataMap, Request, Response, Status};
 
 use crate::{
@@ -190,13 +190,59 @@ impl ConfigurationService for Service {
             &eval_result.1,
             &apikey,
         );
-        let struct_value: Result<Value, DecodeError> = types::from_any(&eval_result.0);
-        if let Err(e) = struct_value {
-            return Err(tonic::Status::internal(e.to_string()));
-        }
-        let vec = struct_value.unwrap().encode_to_vec();
-        Ok(Response::new(GetJsonValueResponse { value: vec }))
+        let struct_value: Value = match types::from_any(&eval_result.0) {
+            Err(err) => {
+                println!("error from decoding from any {:?}", err);
+                return Err(Status::internal("invalid internal protobuf type"));
+            }
+            Ok(v) => v,
+        };
+
+        Ok(Response::new(GetJsonValueResponse {
+            value: serde_json::to_vec(&ValueWrapper(&struct_value)).map_err(|e| {
+                Status::internal("failure serializing json ".to_owned() + &e.to_string())
+            })?,
+        }))
     }
+}
+
+fn serialize_value<S>(value: &prost_types::Value, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    match &value.kind {
+        None | Some(Kind::NullValue(_)) => serializer.serialize_none(),
+        Some(Kind::NumberValue(f)) => serializer.serialize_f64(*f),
+        Some(Kind::StringValue(s)) => serializer.serialize_str(s),
+        Some(Kind::BoolValue(b)) => serializer.serialize_bool(*b),
+        Some(Kind::StructValue(st)) => serialize_struct(st, serializer),
+        Some(Kind::ListValue(l)) => serialize_list(l, serializer),
+    }
+}
+
+pub struct ValueWrapper<'a>(&'a prost_types::Value);
+
+impl<'a> serde::Serialize for ValueWrapper<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ::serde::Serializer,
+    {
+        serialize_value(self.0, serializer)
+    }
+}
+
+fn serialize_struct<S>(st: &prost_types::Struct, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    serializer.collect_map(st.fields.iter().map(|(k, v)| (k, ValueWrapper(v))))
+}
+
+fn serialize_list<S>(st: &prost_types::ListValue, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    serializer.collect_seq(st.values.iter().map(ValueWrapper))
 }
 
 impl Service {
@@ -208,5 +254,80 @@ impl Service {
                 .metadata_mut()
                 .append(APIKEY, apikey.to_owned());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    struct SerTestCase {
+        val: prost_types::Value,
+        res: &'static str,
+    }
+
+    fn string_value(literal: &'static str) -> prost_types::Value {
+        prost_types::Value {
+            kind: Some(prost_types::value::Kind::StringValue(literal.to_owned())),
+        }
+    }
+
+    fn number_value(num: f64) -> prost_types::Value {
+        prost_types::Value {
+            kind: Some(prost_types::value::Kind::NumberValue(num)),
+        }
+    }
+
+    fn bool_value(b: bool) -> prost_types::Value {
+        prost_types::Value {
+            kind: Some(prost_types::value::Kind::BoolValue(b)),
+        }
+    }
+
+    #[test]
+    fn test_serialization() {
+        let tcs = vec![
+            SerTestCase {
+                val: prost_types::Value {
+                    kind: Some(prost_types::value::Kind::ListValue(
+                        prost_types::ListValue { values: vec![] },
+                    )),
+                },
+                res: r#"[]"#,
+            },
+            SerTestCase {
+                val: prost_types::Value {
+                    kind: Some(prost_types::value::Kind::ListValue(
+                        prost_types::ListValue {
+                            values: vec![string_value("a1"), string_value("a2")],
+                        },
+                    )),
+                },
+                res: r#"["a1","a2"]"#,
+            },
+            SerTestCase {
+                val: prost_types::Value {
+                    kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
+                        // We can deterministically get the string of a btreemap since it
+                        // has a well defined order vs. hashmap.
+                        fields: BTreeMap::<String, prost_types::Value>::from_iter(
+                            vec![
+                                ("a".to_owned(), string_value("val")),
+                                ("b".to_owned(), number_value(-1.0)),
+                                ("c".to_owned(), bool_value(false)),
+                            ]
+                            .into_iter(),
+                        ),
+                    })),
+                },
+                res: r#"{"a":"val","b":-1.0,"c":false}"#,
+            },
+        ];
+        tcs.iter().for_each(|tc| {
+            assert_eq!(
+                serde_json::to_string(&super::ValueWrapper(&tc.val)).unwrap(),
+                tc.res
+            )
+        })
     }
 }
