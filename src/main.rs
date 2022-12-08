@@ -1,3 +1,4 @@
+use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
 use sidecar::gen::lekko::backend::v1beta1::configuration_service_client::ConfigurationServiceClient;
 use sidecar::gen::lekko::backend::v1beta1::configuration_service_server::ConfigurationServiceServer;
@@ -6,27 +7,47 @@ use sidecar::gen::lekko::backend::v1beta1::distribution_service_client::Distribu
 use sidecar::metrics::Metrics;
 use sidecar::service::Service;
 use sidecar::store::Store;
-use std::env;
+use std::net::SocketAddr;
 use tonic::codegen::CompressionEncoding;
 use tonic::transport::{Server, Uri};
 
+// Struct containing all the cmd-line args we accept
+#[derive(Parser, Debug)]
+#[clap(author="Lekko", version="0.1.0", about, long_about = None)]
+/// Lekko sidecar that provides the host application with config
+/// updates from Lekko and performs local evaluation.
+struct Args {
+    #[arg(short, long, default_value_t=String::from("https://grpc.lekko.dev"))]
+    /// Address to communicate with lekko backend..
+    lekko_addr: String,
+
+    #[arg(short, long, default_value_t=String::from("0.0.0.0:50051"))]
+    /// Address to communicate with lekko backend..
+    bind_addr: String,
+
+    #[arg(short, long, default_value_t = false)]
+    /// Enabling proxy mode will run server-side evaluation instead of local evaluation.
+    proxy_mode: bool,
+
+    #[arg(short, long)]
+    /// Absolute path to the fallback config repository on local disk.
+    /// If not provided, there will be no fallback behavior.
+    fallback_repo_path: Option<String>,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = match env::var("LEKKO_BIND_ADDR")
-        .unwrap_or_else(|_| "0.0.0.0:50051".to_owned())
-        .parse()
-    {
-        Err(err) => panic!("parsing address failed: {:?}", err),
-        Ok(addr) => addr,
+    let args = Args::parse();
+    println!("args: {:?}", args);
+    let addr = match args.bind_addr.parse::<SocketAddr>() {
+        Err(err) => panic!("parsing bind_addr failed: {:?}", err),
+        Ok(a) => a,
     };
-    println!("listening on port: {:?}", addr);
-    let lekko_addr = env::var("LEKKO_PROXY_ADDR")
-        .unwrap_or_else(|_| "https://grpc.lekko.dev".to_owned())
-        .parse::<Uri>()?;
-
-    // Setting proxy_mode to false will ensure that we perform rules evaluation locally in the sidecar.
-    let proxy_mode = false;
-    println!("lekko address: {}\nProxy mode: {}", lekko_addr, proxy_mode);
+    let lekko_addr = match args.lekko_addr.parse::<Uri>() {
+        Err(err) => panic!("parsing lekko_addr failed: {:?}", err),
+        Ok(a) => a,
+    };
+    println!("listening on port: {:?}", addr.to_owned());
 
     let http_client = hyper::Client::builder().build(
         HttpsConnectorBuilder::new()
@@ -51,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let service = ConfigurationServiceServer::new(Service {
         config_client,
         store,
-        proxy_mode,
+        proxy_mode: args.proxy_mode,
         metrics,
     })
     .send_compressed(CompressionEncoding::Gzip)
