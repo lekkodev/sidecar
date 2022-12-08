@@ -3,6 +3,7 @@ use sidecar::gen::lekko::backend::v1beta1::configuration_service_client::Configu
 use sidecar::gen::lekko::backend::v1beta1::configuration_service_server::ConfigurationServiceServer;
 use sidecar::gen::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 
+use sidecar::metrics::Metrics;
 use sidecar::service::Service;
 use sidecar::store::Store;
 use std::env;
@@ -24,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse::<Uri>()?;
 
     // Setting proxy_mode to false will ensure that we perform rules evaluation locally in the sidecar.
-    let proxy_mode = false;
+    let proxy_mode = true;
     println!("lekko address: {}\nProxy mode: {}", lekko_addr, proxy_mode);
 
     let http_client = hyper::Client::builder().build(
@@ -45,11 +46,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dist_client = DistributionServiceClient::with_origin(http_client, lekko_addr)
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
-    let store = Store::new(dist_client, config_client.clone());
+    let store = Store::new(dist_client.clone(), config_client.clone());
+    let metrics = Metrics::new(dist_client);
     let service = ConfigurationServiceServer::new(Service {
         config_client,
         store,
         proxy_mode,
+        metrics,
     })
     .send_compressed(CompressionEncoding::Gzip)
     .accept_compressed(CompressionEncoding::Gzip);

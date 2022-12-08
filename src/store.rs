@@ -30,6 +30,12 @@ pub struct Store {
     cache: DashMap<(String, String), Feature>,
 }
 
+pub struct FeatureData {
+    pub commit_sha: String,
+    pub feature_sha: String,
+    pub feature: Feature,
+}
+
 impl Store {
     pub fn new(
         dist_client: DistributionServiceClient<
@@ -101,13 +107,17 @@ impl Store {
     pub async fn get_feature(
         &self,
         request: FeatureRequestParams,
-    ) -> Result<Feature, tonic::Status> {
+    ) -> Result<FeatureData, tonic::Status> {
         if let Some(feature) = self
             .cache
             .get(&(request.namespace.clone(), request.feature.clone()))
         {
             // TODO: revisit if we should borrow in this signature.
-            return Ok(feature.clone());
+            return Ok(FeatureData {
+                feature: feature.clone(),
+                commit_sha: "".to_owned(),
+                feature_sha: "".to_owned(),
+            });
         }
 
         println!(
@@ -131,8 +141,12 @@ impl Store {
                     "received feature {} with blob sha {}",
                     feature.name, feature.sha
                 );
-                if feature.feature.is_some() {
-                    return Ok(feature.feature.unwrap());
+                if let Some(some_feature) = feature.feature {
+                    return Ok(FeatureData {
+                        commit_sha: success_resp.commit_sha,
+                        feature_sha: feature.sha,
+                        feature: some_feature,
+                    });
                 }
             }
         }
