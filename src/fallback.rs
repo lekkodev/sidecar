@@ -1,7 +1,7 @@
 use std::fs::{read, read_dir};
 
+use git2::ObjectType;
 use prost::Message;
-use sha1::Digest;
 use tonic::Status;
 
 use crate::gen::lekko::{
@@ -12,11 +12,16 @@ use crate::gen::lekko::{
 pub struct Fallback {
     // If none, fallback behavior is not enabled.
     repo_path: Option<String>,
+    // Path to the .git folder. If empty, assume repo_path/.git.
+    _git_dir_path: Option<String>,
 }
 
 impl Fallback {
-    pub fn new(repo_path: Option<String>) -> Self {
-        Self { repo_path }
+    pub fn new(repo_path: Option<String>, git_dir_path: Option<String>) -> Self {
+        Self {
+            repo_path,
+            _git_dir_path: git_dir_path,
+        }
     }
     pub fn enabled(&self) -> bool {
         self.repo_path.is_some()
@@ -26,16 +31,20 @@ impl Fallback {
         repo_key: RepositoryKey,
         namespaces: &[String],
     ) -> Result<GetRepositoryContentsResponse, Status> {
+        if !self.enabled() {
+            return Err(Status::invalid_argument("fallback not enabled"));
+        }
+        let commit_sha = self.git_commit_sha()?;
         println!(
-            "Fallback: load {:?} {:?} {:?}",
-            self.repo_path, repo_key, namespaces
+            "Fallback: load {:?} {:?} {:?} {:?}",
+            self.repo_path, repo_key, namespaces, commit_sha,
         );
         let mut ns_results = vec![];
         for namespace in namespaces {
             ns_results.push(self.load_namespace(namespace)?);
         }
         let resp = GetRepositoryContentsResponse {
-            commit_sha: "".to_string(), // TODO: get commit sha from git repo
+            commit_sha: commit_sha,
             namespaces: ns_results,
         };
         println!("git-sync commit sha {:?}", resp.commit_sha);
@@ -89,7 +98,7 @@ impl Fallback {
                                             continue;
                                         }
                                     };
-                                    let sha = self.blob_sha(bytes.as_ref())?;
+                                    let sha = self.git_hash_object(bytes.as_ref())?;
                                     features.push(Feature {
                                         name: String::from(feature_name),
                                         sha: sha.to_owned(),
@@ -127,14 +136,27 @@ impl Fallback {
         })
     }
 
-    // Calculates the git sha of a blob. Underlying algorithm uses
-    // sha-1 with some prefixed bytes. see
-    // https://stackoverflow.com/a/24283352/1849010
-    fn blob_sha(&self, content: &[u8]) -> Result<String, Status> {
-        let mut hasher = sha1::Sha1::new();
-        let prefix = format!("blob {:}\0", content.len());
-        hasher.update(prefix.as_bytes());
-        hasher.update(content);
-        Ok(format!("{:x}", hasher.finalize()))
+    // Calculates the git sha of a blob. Under the hood, git
+    // uses sha-1.
+    fn git_hash_object(&self, bytes: &[u8]) -> Result<String, Status> {
+        match git2::Oid::hash_object(ObjectType::Blob, bytes) {
+            Ok(oid) => Ok(oid.to_string()),
+            Err(e) => Err(Status::internal(format!("failed to hash object: {:?}", e))),
+        }
+    }
+
+    fn git_commit_sha(&self) -> Result<String, Status> {
+        let repo = match git2::Repository::open(self.repo_path.to_owned().unwrap()) {
+            Ok(r) => r,
+            Err(e) => return Err(Status::internal(format!("failed to open repo: {:?}", e))),
+        };
+        let commit_sha = match repo.revparse("HEAD") {
+            Ok(rs) => match rs.from() {
+                Some(o) => o.id().to_string(),
+                None => panic!("no from id found in refspec"),
+            },
+            Err(e) => panic!("failed to revparse: {:?}", e),
+        };
+        Ok(commit_sha)
     }
 }

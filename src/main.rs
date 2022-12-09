@@ -35,6 +35,10 @@ struct Args {
     /// Absolute path to the fallback config repository on local disk.
     /// If not provided, there will be no fallback behavior.
     fallback_repo_path: Option<String>,
+
+    #[arg(short, long)]
+    /// Absolute path to the .git directory on disk.
+    git_dir_path: Option<String>,
 }
 
 #[tokio::main]
@@ -60,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .enable_http2()
             .build(),
     );
-    let fallback = Fallback::new(args.fallback_repo_path);
+    let fallback = Fallback::new(args.fallback_repo_path, args.git_dir_path);
     if fallback.enabled() {
         fallback
             .load(
