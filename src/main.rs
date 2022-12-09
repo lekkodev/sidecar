@@ -1,8 +1,10 @@
 use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
+use sidecar::fallback::Fallback;
 use sidecar::gen::lekko::backend::v1beta1::configuration_service_client::ConfigurationServiceClient;
 use sidecar::gen::lekko::backend::v1beta1::configuration_service_server::ConfigurationServiceServer;
 use sidecar::gen::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
+use sidecar::gen::lekko::backend::v1beta1::RepositoryKey;
 
 use sidecar::metrics::Metrics;
 use sidecar::service::Service;
@@ -58,7 +60,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .enable_http2()
             .build(),
     );
-
+    let fallback = Fallback::new(args.fallback_repo_path);
+    if fallback.enabled() {
+        fallback
+            .load(
+                RepositoryKey {
+                    owner_name: String::from("lekkodev"),
+                    repo_name: String::from("config-test"),
+                },
+                &["kudos".to_string()],
+            )
+            .unwrap_or_else(|e| panic!("failed fallback load: {:?}", e));
+    }
     // By default, send and accept GZip compression for both the client and the server.
     let config_client =
         ConfigurationServiceClient::with_origin(http_client.clone(), lekko_addr.clone())
