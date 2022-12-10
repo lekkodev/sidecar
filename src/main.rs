@@ -1,10 +1,9 @@
 use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
-use sidecar::fallback::Fallback;
+use sidecar::bootstrap::Bootstrap;
 use sidecar::gen::lekko::backend::v1beta1::configuration_service_client::ConfigurationServiceClient;
 use sidecar::gen::lekko::backend::v1beta1::configuration_service_server::ConfigurationServiceServer;
 use sidecar::gen::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
-use sidecar::gen::lekko::backend::v1beta1::RepositoryKey;
 
 use sidecar::metrics::Metrics;
 use sidecar::service::Service;
@@ -32,13 +31,16 @@ struct Args {
     proxy_mode: bool,
 
     #[arg(short, long)]
-    /// Absolute path to the fallback config repository on local disk.
-    /// If not provided, there will be no fallback behavior.
-    fallback_repo_path: Option<String>,
+    /// Absolute path to the directory on disk that contains the .git folder.
+    /// Provide this flag to turn on bootstrap behavior.
+    repo_path: Option<String>,
 
     #[arg(short, long)]
-    /// Absolute path to the .git directory on disk.
-    git_dir_path: Option<String>,
+    /// Path to the directory on disk that contains the repo contents (lekko.root.yaml).
+    /// If none, it is assumed that the contents are in repo_path, which
+    /// is the case for most local clones of a git repo. git-sync is
+    /// the exception, as it houses contents in a separate symlinked directory.
+    contents_path: Option<String>,
 }
 
 #[tokio::main]
@@ -64,17 +66,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .enable_http2()
             .build(),
     );
-    let fallback = Fallback::new(args.fallback_repo_path, args.git_dir_path);
-    if fallback.enabled() {
-        fallback
-            .load(
-                RepositoryKey {
-                    owner_name: String::from("lekkodev"),
-                    repo_name: String::from("config-test"),
-                },
-                &["kudos".to_string()],
-            )
-            .unwrap_or_else(|e| panic!("failed fallback load: {:?}", e));
+    if let Some(fb_repo_path) = args.repo_path {
+        let bootstrap = Bootstrap::new(fb_repo_path, args.contents_path);
+        // TODO: load this into the store.
+        bootstrap
+            .load()
+            .unwrap_or_else(|e| panic!("failed bootstrap load: {:?}", e));
     }
     // By default, send and accept GZip compression for both the client and the server.
     let config_client =

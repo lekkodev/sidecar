@@ -1,5 +1,5 @@
+pub mod bootstrap;
 pub mod evaluate;
-pub mod fallback;
 pub mod gen;
 pub mod metrics;
 pub mod service;
