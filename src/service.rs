@@ -32,7 +32,6 @@ pub struct Service {
 }
 
 // TODO: Send batched flag evaluation metrics back to the backend after local evaluation.
-
 #[tonic::async_trait]
 impl ConfigurationService for Service {
     async fn register(
