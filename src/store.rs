@@ -10,7 +10,7 @@ use crate::{
         backend::v1beta1::{
             configuration_service_client::ConfigurationServiceClient,
             distribution_service_client::DistributionServiceClient, GetRepositoryContentsRequest,
-            GetRepositoryContentsResponse, Namespace, RepositoryKey,
+            GetRepositoryContentsResponse, GetRepositoryVersionRequest, Namespace, RepositoryKey,
         },
         feature::v1beta1::Feature,
     },
@@ -27,6 +27,10 @@ use tonic::{
 use tokio::sync::oneshot::{Receiver, Sender};
 
 // Store acts as the abstraction for the storage and retrieval of all features.
+// Internally there is a state machine that has two states: registered and unregistered.
+// A store starts unregistered, and a single register call will make it registered.
+// Once registered, a store will poll for new configuration and ignore subsequent register calls.
+//
 // We have an std RwLock around any concurrent state that we currently manage.
 // Std locks are fine to use in async functions as long as we don't hold them across
 // await's. This is enforced by the compiler, but just something to keep in mind.
@@ -75,17 +79,20 @@ async fn poll_loop(
     dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
     state: Arc<RwLock<ConcurrentState>>,
 ) {
-    match rx.await {
+    // We begin the loop by waiting for a register call.
+    // Once the register call comes through, we can start fetching on a poll.
+    //
+    // Keep conn_creds around to not have to read it from concurrent state all the time.
+    let conn_creds = match rx.await {
         Ok(data) => {
             let version = data.repo_version.clone();
             let mut state_guard = state.write().unwrap();
             *state_guard = data;
-            // release state_guard
-            drop(state_guard);
             println!(
                 "got register message, starting polling from version: {}",
                 version
             );
+            state_guard.conn_creds.clone()
         }
         Err(err) => {
             // TODO: handle panics better.
@@ -94,14 +101,22 @@ async fn poll_loop(
                 err
             )
         }
-    }
+    };
 
     // TODO: make configurable.
     let mut interval = tokio::time::interval(Duration::from_millis(1000));
     loop {
         interval.tick().await;
         // fetch version
-        let new_version = "".to_string();
+        let new_version =
+            match get_repo_version_remote(dist_client.clone(), conn_creds.clone()).await {
+                Ok(v) => v,
+                Err(err) => {
+                    // TODO: exp backoff when we have errors
+                    println!("got an error when fetching version {:#?}", err);
+                    continue;
+                }
+            };
 
         let conn_creds = {
             let state_guard = state.read().unwrap();
@@ -170,6 +185,32 @@ fn create_feature_store(namespaces: Vec<Namespace>) -> FeatureStore {
     feature_store
 }
 
+async fn get_repo_version_remote(
+    mut dist_client: DistributionServiceClient<
+        hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
+    >,
+    conn_creds: ConnectionCredentials,
+) -> Result<String, tonic::Status> {
+    let mut req = Request::new(GetRepositoryVersionRequest {
+        repo_key: Some(conn_creds.repo_key),
+    });
+    req.metadata_mut().append(APIKEY, conn_creds.api_key);
+    match dist_client
+        .get_repository_version(req)
+        .await
+        .map(|resp| resp.into_inner())
+    {
+        Ok(resp) => Ok(resp.commit_sha),
+        Err(error) => {
+            println!(
+                "error fetching repo version from distribution service {:?}",
+                error
+            );
+            Err(error)
+        }
+    }
+}
+
 async fn get_repo_contents_remote(
     mut dist_client: DistributionServiceClient<
         hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
@@ -182,10 +223,7 @@ async fn get_repo_contents_remote(
         .map(|resp| resp.into_inner())
     {
         Ok(resp) => {
-            println!(
-                "received feature contents for commit sha {}",
-                resp.commit_sha,
-            );
+            println!("received contents for commit sha {}", resp.commit_sha,);
             Ok(resp)
         }
         Err(error) => {
