@@ -137,8 +137,8 @@ async fn poll_loop(
             Ok(res) => {
                 // obtain lock again to replace data
                 let mut state_guard = state.write().unwrap();
-                (*state_guard).cache = create_feature_store(res.namespaces);
-                (*state_guard).repo_version = res.commit_sha;
+                state_guard.cache = create_feature_store(res.namespaces);
+                state_guard.repo_version = res.commit_sha;
                 // drop state_guard
             }
             Err(err) => {
