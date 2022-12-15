@@ -3,8 +3,8 @@ use std::{
     path::Path,
 };
 
-use git2::ObjectType;
 use prost::Message;
+use sha1::Digest;
 use tonic::Status;
 use yaml_rust::YamlLoader;
 
@@ -55,9 +55,14 @@ impl Bootstrap {
     // Check to see if the repo exists
     fn validate(&self) -> Result<(), Status> {
         let git_dir_path = format!("{:}/.git", self.repo_path);
-        if !Path::new(&git_dir_path).exists() {
+        let md = match std::fs::metadata(Path::new(&git_dir_path)) {
+            Ok(m) => m,
+            Err(e) => return Err(Status::internal(format!("path {:} does not exist: {:?}", git_dir_path, e))),
+        };
+        
+        if !md.is_dir() {
             return Err(Status::internal(format!(
-                "path {:} does not exist",
+                "path {:} is not a directory",
                 git_dir_path
             )));
         }
@@ -179,27 +184,26 @@ impl Bootstrap {
         })
     }
 
-    // Calculates the git sha of a blob. Under the hood, git
-    // uses sha-1.
-    fn git_hash_object(&self, bytes: &[u8]) -> Result<String, Status> {
-        match git2::Oid::hash_object(ObjectType::Blob, bytes) {
-            Ok(oid) => Ok(oid.to_string()),
-            Err(e) => Err(Status::internal(format!("failed to hash object: {:?}", e))),
-        }
+    // Calculates the git sha of a blob. Underlying algorithm uses
+    // sha-1 with some prefixed bytes. see
+    // https://stackoverflow.com/a/24283352/1849010
+    fn git_hash_object(&self, content: &[u8]) -> Result<String, Status> {
+        let mut hasher = sha1::Sha1::new();
+        let prefix = format!("blob {:}\0", content.len());
+        hasher.update(prefix.as_bytes());
+        hasher.update(content);
+        Ok(format!("{:x}", hasher.finalize()))
     }
 
-    // Determines the git commit sha of HEAD. utilizes the git2 library.
+    // Determines the git commit sha of HEAD.
     fn git_commit_sha(&self) -> Result<String, Status> {
-        let repo = match git2::Repository::open(&self.repo_path) {
+        let repo = match git_repository::open(Path::new(&self.repo_path)) {
             Ok(r) => r,
             Err(e) => return Err(Status::internal(format!("failed to open repo: {:?}", e))),
         };
-        let commit_sha = match repo.revparse("HEAD") {
-            Ok(rs) => match rs.from() {
-                Some(o) => o.id().to_string(),
-                None => panic!("no from id found in refspec"),
-            },
-            Err(e) => panic!("failed to revparse: {:?}", e),
+        let commit_sha = match repo.head_id() {
+            Ok(id) => id.to_string(),
+            Err(e) => return Err(Status::internal(format!("failed rev parse: {:?}", e))),
         };
         Ok(commit_sha)
     }
