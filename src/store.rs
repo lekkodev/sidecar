@@ -118,19 +118,17 @@ async fn poll_loop(
                 }
             };
 
-        let conn_creds = {
+        {
             let state_guard = state.read().unwrap();
-
             if state_guard.repo_version == new_version {
                 continue;
             }
-            state_guard.conn_creds.clone()
             // release read lock to fetch data
         };
 
         match get_repo_contents_remote(
             dist_client.clone(),
-            conn_creds_to_repo_contents_request(conn_creds),
+            conn_creds_to_repo_contents_request(conn_creds.clone()),
         )
         .await
         {
