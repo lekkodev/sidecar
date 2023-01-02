@@ -125,6 +125,25 @@ pub mod configuration_service_client {
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
+        pub async fn register(
+            &mut self,
+            request: impl tonic::IntoRequest<super::RegisterRequest>,
+        ) -> Result<tonic::Response<super::RegisterResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.backend.v1beta1.ConfigurationService/Register",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -146,6 +165,10 @@ pub mod configuration_service_server {
             &self,
             request: tonic::Request<super::GetJsonValueRequest>,
         ) -> Result<tonic::Response<super::GetJsonValueResponse>, tonic::Status>;
+        async fn register(
+            &self,
+            request: tonic::Request<super::RegisterRequest>,
+        ) -> Result<tonic::Response<super::RegisterResponse>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct ConfigurationServiceServer<T: ConfigurationService> {
@@ -316,6 +339,44 @@ pub mod configuration_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = GetJSONValueSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.backend.v1beta1.ConfigurationService/Register" => {
+                    #[allow(non_camel_case_types)]
+                    struct RegisterSvc<T: ConfigurationService>(pub Arc<T>);
+                    impl<
+                        T: ConfigurationService,
+                    > tonic::server::UnaryService<super::RegisterRequest>
+                    for RegisterSvc<T> {
+                        type Response = super::RegisterResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::RegisterRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move { (*inner).register(request).await };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = RegisterSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
