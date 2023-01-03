@@ -1,3 +1,4 @@
+pub mod bootstrap;
 pub mod evaluate;
 pub mod gen;
 pub mod metrics;

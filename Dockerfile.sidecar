@@ -39,5 +39,4 @@ FROM --platform=${TARGETPLATFORM} debian:bullseye-slim
 
 COPY --from=builder /workspace/sidecar /usr/local/bin/sidecar
 
-# TODO entrypoint to prevent execing
-CMD ["/usr/local/bin/sidecar"]
+ENTRYPOINT ["/usr/local/bin/sidecar"]

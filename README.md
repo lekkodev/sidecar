@@ -35,6 +35,19 @@ Running the dockerfile for now:
 docker run -d -t --rm --name sidecar -p 50051:50051 -e RUST_BACKTRACE=1 docker.io/lekko/sidecar:latest
 ```
 
-### Environment Variables
-You can set both `LEKKO_BIND_ADDR` and `LEKKO_PROXY_ADDR` using `-e` in `docker run` in order to change things.
+### Command-line args
 
+The binary runs with the following args:
+```
+Lekko sidecar that provides the host application with config updates from Lekko and performs local evaluation
+
+Usage: sidecar [OPTIONS]
+
+Options:
+  -l, --lekko-addr <LEKKO_ADDR>  Address to communicate with lekko backend.. [default: https://grpc.lekko.dev]
+  -b, --bind-addr <BIND_ADDR>    Address to communicate with lekko backend.. [default: 0.0.0.0:50051]
+  -p, --proxy-mode               Enabling proxy mode will run server-side evaluation instead of local evaluation
+  -r, --repo-path <REPO_PATH>    Absolute path to the directory on disk that contains the .git folder. Provide this flag to turn on bootstrap behavior
+  -h, --help                     Print help information
+  -V, --version                  Print version information
+```
