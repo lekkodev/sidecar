@@ -19,21 +19,21 @@ pub struct Bootstrap {
     // Path to the directory on disk that contains the .git folder.
     repo_path: String,
     // Path to the directory on disk that contains the repo contents (lekko.root.yaml).
-    // If none, it is assumed that the contents are in repo_path, which
-    // is the case for most local clones of a git repo. git-sync is
-    // the exception, as it houses contents in a separate symlinked directory.
+    // It is assumed that the contents are in repo_path, which
+    // is the case for most local clones of a git repo. If using git-sync,
+    // we assume that the repo contents are in a subsirectory called 'contents'.
     contents_path: Option<String>,
 }
 
 impl Bootstrap {
-    pub fn new(repo_path: String, contents_path: Option<String>) -> Self {
+    pub fn new(repo_path: String) -> Self {
         Self {
             repo_path,
-            contents_path,
+            contents_path: None,
         }
     }
 
-    pub fn load(&self) -> Result<Option<GetRepositoryContentsResponse>, Status> {
+    pub fn load(&mut self) -> Result<Option<GetRepositoryContentsResponse>, Status> {
         if let Err(e) = self.validate() {
             println!("failed validating repo, skipping disk bootstrap {:?}", e);
             return Ok(None);
@@ -53,7 +53,7 @@ impl Bootstrap {
     }
 
     // Check to see if the repo exists
-    fn validate(&self) -> Result<(), Status> {
+    fn validate(&mut self) -> Result<(), Status> {
         let git_dir_path = format!("{:}/.git", self.repo_path);
         let md = match std::fs::metadata(Path::new(&git_dir_path)) {
             Ok(m) => m,
@@ -71,26 +71,32 @@ impl Bootstrap {
                 git_dir_path
             )));
         }
-        let lekko_root_path = format!("{:}/lekko.root.yaml", self.contents_path());
-        if !Path::new(&lekko_root_path).exists() {
+        let default_contents_path = self.repo_path.to_owned();
+        let default_root_yaml_path = format!("{:}/lekko.root.yaml", default_contents_path);
+        if Path::new(&default_root_yaml_path).exists() {
+            self.contents_path = Some(default_contents_path);
+            println!("Contents path: {:}", self.contents_path.to_owned().unwrap());
+            return Ok(());
+        }
+        let git_sync_contents_path = format!("{:}/contents", self.repo_path);
+        let git_sync_root_yaml_path = format!("{:}/lekko.root.yaml", git_sync_contents_path);
+        if !Path::new(&git_sync_root_yaml_path).exists() {
             return Err(Status::internal(format!(
-                "path {:} does not exist",
-                lekko_root_path
+                "paths {:} or {:} do not exist",
+                default_root_yaml_path, git_sync_root_yaml_path,
             )));
         }
+        self.contents_path = Some(git_sync_contents_path);
+        println!("Contents path: {:}", self.contents_path.to_owned().unwrap());
         Ok(())
-    }
-
-    fn contents_path(&self) -> String {
-        match self.contents_path.to_owned() {
-            Some(cp) => cp,
-            None => self.repo_path.to_owned(),
-        }
     }
 
     // find namespaces contained in the repo by inspecting lekko.root.yaml.
     fn find_namespace_names(&self) -> Result<Vec<String>, Status> {
-        let lekko_root_path = format!("{:}/lekko.root.yaml", self.contents_path());
+        let lekko_root_path = format!(
+            "{:}/lekko.root.yaml",
+            self.contents_path.to_owned().unwrap()
+        );
         let yaml = match read_to_string(&lekko_root_path) {
             Ok(contents) => match YamlLoader::load_from_str(contents.as_ref()) {
                 Ok(docs) => docs[0].to_owned(),
@@ -119,7 +125,11 @@ impl Bootstrap {
     }
 
     fn load_namespace(&self, namespace: &str) -> Result<Namespace, Status> {
-        let ns_path = format!("{}/{}/gen/proto", self.contents_path(), namespace);
+        let ns_path = format!(
+            "{}/{}/gen/proto",
+            self.contents_path.to_owned().unwrap(),
+            namespace
+        );
         let paths = read_dir(ns_path).unwrap();
 
         let mut features = vec![];

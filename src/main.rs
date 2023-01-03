@@ -19,11 +19,11 @@ use tonic::transport::{Server, Uri};
 /// updates from Lekko and performs local evaluation.
 struct Args {
     #[arg(short, long, default_value_t=String::from("https://grpc.lekko.dev"))]
-    /// Address to communicate with lekko backend..
+    /// Address to communicate with lekko backend.
     lekko_addr: String,
 
     #[arg(short, long, default_value_t=String::from("0.0.0.0:50051"))]
-    /// Address to communicate with lekko backend..
+    /// Address to bind to on current host.
     bind_addr: String,
 
     #[arg(short, long, default_value_t = false)]
@@ -34,13 +34,6 @@ struct Args {
     /// Absolute path to the directory on disk that contains the .git folder.
     /// Provide this flag to turn on bootstrap behavior.
     repo_path: Option<String>,
-
-    #[arg(short, long)]
-    /// Path to the directory on disk that contains the repo contents (lekko.root.yaml).
-    /// If none, it is assumed that the contents are in repo_path, which
-    /// is the case for most local clones of a git repo. git-sync is
-    /// the exception, as it houses contents in a separate symlinked directory.
-    contents_path: Option<String>,
 }
 
 #[tokio::main]
@@ -67,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     );
     if let Some(fb_repo_path) = args.repo_path {
-        let bootstrap = Bootstrap::new(fb_repo_path, args.contents_path);
+        let mut bootstrap = Bootstrap::new(fb_repo_path);
         // TODO: load this into the store.
         bootstrap
             .load()

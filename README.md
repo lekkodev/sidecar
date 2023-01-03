@@ -44,11 +44,10 @@ Lekko sidecar that provides the host application with config updates from Lekko 
 Usage: sidecar [OPTIONS]
 
 Options:
-  -l, --lekko-addr <LEKKO_ADDR>        Address to communicate with lekko backend.. [default: https://grpc.lekko.dev]
-  -b, --bind-addr <BIND_ADDR>          Address to communicate with lekko backend.. [default: 0.0.0.0:50051]
-  -p, --proxy-mode                     Enabling proxy mode will run server-side evaluation instead of local evaluation
-  -r, --repo-path <REPO_PATH>          Absolute path to the directory on disk that contains the .git folder. Provide this flag to turn on bootstrap behavior
-  -c, --contents-path <CONTENTS_PATH>  Path to the directory on disk that contains the repo contents (lekko.root.yaml). If none, it is assumed that the contents are in repo_path, which is the case for most local clones of a git repo. git-sync is the exception, as it houses contents in a separate symlinked directory
-  -h, --help                           Print help information
-  -V, --version                        Print version information
+  -l, --lekko-addr <LEKKO_ADDR>  Address to communicate with lekko backend.. [default: https://grpc.lekko.dev]
+  -b, --bind-addr <BIND_ADDR>    Address to communicate with lekko backend.. [default: 0.0.0.0:50051]
+  -p, --proxy-mode               Enabling proxy mode will run server-side evaluation instead of local evaluation
+  -r, --repo-path <REPO_PATH>    Absolute path to the directory on disk that contains the .git folder. Provide this flag to turn on bootstrap behavior
+  -h, --help                     Print help information
+  -V, --version                  Print version information
 ```
