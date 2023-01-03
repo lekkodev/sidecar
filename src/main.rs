@@ -63,9 +63,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => None,
         Some(rp) => {
             let mut bootstrap = Bootstrap::new(rp);
-            Some(bootstrap
-                .load()
-                .unwrap_or_else(|e| panic!("failed bootstrap load: {:?}", e)))
+            Some(
+                bootstrap
+                    .load()
+                    .unwrap_or_else(|e| panic!("failed bootstrap load: {:?}", e)),
+            )
         }
     };
     // By default, send and accept GZip compression for both the client and the server.

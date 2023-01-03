@@ -262,7 +262,7 @@ impl Store {
                     repo_key: RepositoryKey::default(),
                     api_key: MetadataValue::from_static(""),
                 },
-            }
+            },
         }));
         tokio::spawn(poll_loop(rx, dist_client.clone(), state.clone()));
         Self {
