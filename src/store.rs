@@ -242,16 +242,27 @@ impl Store {
         config_client: ConfigurationServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
+        bootstrap_data: Option<GetRepositoryContentsResponse>,
     ) -> Self {
         // TODO: worry about this join handle.
         let (tx, rx) = tokio::sync::oneshot::channel::<ConcurrentState>();
-        let state = Arc::new(RwLock::new(ConcurrentState {
-            cache: HashMap::new(),
-            repo_version: "".to_string(),
-            conn_creds: ConnectionCredentials {
-                repo_key: RepositoryKey::default(),
-                api_key: MetadataValue::from_static(""),
+        let state = Arc::new(RwLock::new(match bootstrap_data {
+            None => ConcurrentState {
+                cache: HashMap::new(),
+                repo_version: "".to_string(),
+                conn_creds: ConnectionCredentials {
+                    repo_key: RepositoryKey::default(),
+                    api_key: MetadataValue::from_static(""),
+                },
             },
+            Some(contents) => ConcurrentState {
+                cache: create_feature_store(contents.namespaces),
+                repo_version: contents.commit_sha,
+                conn_creds: ConnectionCredentials {
+                    repo_key: RepositoryKey::default(),
+                    api_key: MetadataValue::from_static(""),
+                },
+            }
         }));
         tokio::spawn(poll_loop(rx, dist_client.clone(), state.clone()));
         Self {

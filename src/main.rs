@@ -59,13 +59,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .enable_http2()
             .build(),
     );
-    if let Some(fb_repo_path) = args.repo_path {
-        let mut bootstrap = Bootstrap::new(fb_repo_path);
-        // TODO: load this into the store.
-        bootstrap
-            .load()
-            .unwrap_or_else(|e| panic!("failed bootstrap load: {:?}", e));
-    }
+    let bootstrap_data = match args.repo_path {
+        None => None,
+        Some(rp) => {
+            let mut bootstrap = Bootstrap::new(rp);
+            Some(bootstrap
+                .load()
+                .unwrap_or_else(|e| panic!("failed bootstrap load: {:?}", e)))
+        }
+    };
     // By default, send and accept GZip compression for both the client and the server.
     let config_client =
         ConfigurationServiceClient::with_origin(http_client.clone(), lekko_addr.clone())
@@ -74,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dist_client = DistributionServiceClient::with_origin(http_client, lekko_addr)
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
-    let store = Store::new(dist_client.clone(), config_client.clone());
+    let store = Store::new(dist_client.clone(), config_client.clone(), bootstrap_data);
     let metrics = Metrics::new(dist_client);
     let service = ConfigurationServiceServer::new(Service {
         config_client,
