@@ -33,11 +33,8 @@ impl Bootstrap {
         }
     }
 
-    pub fn load(&mut self) -> Result<Option<GetRepositoryContentsResponse>, Status> {
-        if let Err(e) = self.validate() {
-            println!("failed validating repo, skipping disk bootstrap {:?}", e);
-            return Ok(None);
-        }
+    pub fn load(&mut self) -> Result<GetRepositoryContentsResponse, Status> {
+        self.validate()?;
         let commit_sha = self.git_commit_sha()?;
         let ns_names = self.find_namespace_names()?;
         let namespaces: Vec<Namespace> =
@@ -46,10 +43,10 @@ impl Bootstrap {
                 Err(e) => return Err(e),
             };
         println!("git-sync commit sha {:}", commit_sha);
-        Ok(Some(GetRepositoryContentsResponse {
+        Ok(GetRepositoryContentsResponse {
             commit_sha,
             namespaces,
-        }))
+        })
     }
 
     // Check to see if the repo exists
@@ -75,7 +72,6 @@ impl Bootstrap {
         let default_root_yaml_path = format!("{:}/lekko.root.yaml", default_contents_path);
         if Path::new(&default_root_yaml_path).exists() {
             self.contents_path = Some(default_contents_path);
-            println!("Contents path: {:}", self.contents_path.to_owned().unwrap());
             return Ok(());
         }
         let git_sync_contents_path = format!("{:}/contents", self.repo_path);
@@ -87,7 +83,6 @@ impl Bootstrap {
             )));
         }
         self.contents_path = Some(git_sync_contents_path);
-        println!("Contents path: {:}", self.contents_path.to_owned().unwrap());
         Ok(())
     }
 
