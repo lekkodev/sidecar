@@ -57,9 +57,14 @@ impl Bootstrap {
         let git_dir_path = format!("{:}/.git", self.repo_path);
         let md = match std::fs::metadata(Path::new(&git_dir_path)) {
             Ok(m) => m,
-            Err(e) => return Err(Status::internal(format!("path {:} does not exist: {:?}", git_dir_path, e))),
+            Err(e) => {
+                return Err(Status::internal(format!(
+                    "path {:} does not exist: {:?}",
+                    git_dir_path, e
+                )))
+            }
         };
-        
+
         if !md.is_dir() {
             return Err(Status::internal(format!(
                 "path {:} is not a directory",
