@@ -563,6 +563,25 @@ pub mod distribution_service_client {
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
+        pub async fn register_client(
+            &mut self,
+            request: impl tonic::IntoRequest<super::RegisterClientRequest>,
+        ) -> Result<tonic::Response<super::RegisterClientResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.backend.v1beta1.DistributionService/RegisterClient",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -590,6 +609,10 @@ pub mod distribution_service_server {
             tonic::Response<super::SendFlagEvaluationMetricsResponse>,
             tonic::Status,
         >;
+        async fn register_client(
+            &self,
+            request: tonic::Request<super::RegisterClientRequest>,
+        ) -> Result<tonic::Response<super::RegisterClientResponse>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct DistributionServiceServer<T: DistributionService> {
@@ -764,6 +787,46 @@ pub mod distribution_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = SendFlagEvaluationMetricsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.backend.v1beta1.DistributionService/RegisterClient" => {
+                    #[allow(non_camel_case_types)]
+                    struct RegisterClientSvc<T: DistributionService>(pub Arc<T>);
+                    impl<
+                        T: DistributionService,
+                    > tonic::server::UnaryService<super::RegisterClientRequest>
+                    for RegisterClientSvc<T> {
+                        type Response = super::RegisterClientResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::RegisterClientRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).register_client(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = RegisterClientSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
