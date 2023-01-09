@@ -125,6 +125,11 @@ async fn poll_loop(
             // release read lock to fetch data
         };
 
+        println!(
+            "polled for new version: {}, will fetch from remote",
+            new_version
+        );
+
         match get_repo_contents_remote(
             dist_client.clone(),
             conn_creds_to_repo_contents_request(conn_creds.clone()),
@@ -132,11 +137,14 @@ async fn poll_loop(
         .await
         {
             Ok(res) => {
-                // obtain lock again to replace data
-                let mut state_guard = state.write().unwrap();
-                state_guard.cache = create_feature_store(res.namespaces);
-                state_guard.repo_version = res.commit_sha;
-                // drop state_guard
+                {
+                    // obtain lock again to replace data
+                    let mut state_guard = state.write().unwrap();
+                    state_guard.cache = create_feature_store(res.namespaces);
+                    state_guard.repo_version = res.commit_sha;
+                    // drop state_guard
+                }
+                println!("updated to new version: {}", new_version);
             }
             Err(err) => {
                 // This is a problem, error loudly.
@@ -307,7 +315,7 @@ impl Store {
                 // work will have to be done here to recover on a loop. For now, we return an error such that we expect
                 // the SDK or client to retry the registration.
                 return Err(tonic::Status::resource_exhausted(format!(
-                    "error when registering with lekko {}",
+                    "error when registering with lekko {:?}",
                     error
                 )));
             }
