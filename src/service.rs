@@ -38,7 +38,11 @@ impl ConfigurationService for Service {
         &self,
         request: Request<RegisterRequest>,
     ) -> Result<tonic::Response<RegisterResponse>, tonic::Status> {
-        let apikey = request.metadata().get(APIKEY).unwrap().clone();
+        let apikey = request
+            .metadata()
+            .get(APIKEY)
+            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
+            .to_owned();
         let request = request.into_inner();
         self.store
             .register(request.repo_key.unwrap(), &request.namespace_list, apikey)

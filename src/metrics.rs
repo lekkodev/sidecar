@@ -130,6 +130,8 @@ impl Metrics {
     ) -> Result<(), tonic::Status> {
         let mut req = Request::new(SendFlagEvaluationMetricsRequest {
             events: vec![event.event],
+            // TODO: hookup a oneshot to populate some concurrent state for the metrics sender.
+            session_key: "".to_string(),
         });
         req.metadata_mut().append(APIKEY, event.apikey);
         dist_client

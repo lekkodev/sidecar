@@ -8,9 +8,9 @@ use std::{
 use crate::{
     gen::lekko::{
         backend::v1beta1::{
-            configuration_service_client::ConfigurationServiceClient,
             distribution_service_client::DistributionServiceClient, GetRepositoryContentsRequest,
-            GetRepositoryContentsResponse, GetRepositoryVersionRequest, Namespace, RepositoryKey,
+            GetRepositoryContentsResponse, GetRepositoryVersionRequest, Namespace,
+            RegisterClientRequest, RepositoryKey,
         },
         feature::v1beta1::Feature,
     },
@@ -18,6 +18,7 @@ use crate::{
 };
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
+use prost::Message;
 use tonic::{
     body::BoxBody,
     metadata::{Ascii, MetadataValue},
@@ -36,9 +37,6 @@ use tokio::sync::oneshot::{Receiver, Sender};
 // await's. This is enforced by the compiler, but just something to keep in mind.
 pub struct Store {
     dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
-    // TODO: proxy register request
-    _config_client:
-        ConfigurationServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
     state: Arc<RwLock<ConcurrentState>>,
     initialize_tx: Mutex<Option<Sender<ConcurrentState>>>,
 }
@@ -58,6 +56,7 @@ struct FeatureInfo {
 struct ConnectionCredentials {
     repo_key: RepositoryKey,
     api_key: MetadataValue<Ascii>,
+    session_key: String,
 }
 
 type FeatureStore = HashMap<FeatureKey, FeatureInfo>;
@@ -126,6 +125,11 @@ async fn poll_loop(
             // release read lock to fetch data
         };
 
+        println!(
+            "polled for new version: {}, will fetch from remote",
+            new_version
+        );
+
         match get_repo_contents_remote(
             dist_client.clone(),
             conn_creds_to_repo_contents_request(conn_creds.clone()),
@@ -133,11 +137,14 @@ async fn poll_loop(
         .await
         {
             Ok(res) => {
-                // obtain lock again to replace data
-                let mut state_guard = state.write().unwrap();
-                state_guard.cache = create_feature_store(res.namespaces);
-                state_guard.repo_version = res.commit_sha;
-                // drop state_guard
+                {
+                    // obtain lock again to replace data
+                    let mut state_guard = state.write().unwrap();
+                    state_guard.cache = create_feature_store(res.namespaces);
+                    state_guard.repo_version = res.commit_sha;
+                    // drop state_guard
+                }
+                println!("updated to new version: {}", new_version);
             }
             Err(err) => {
                 // This is a problem, error loudly.
@@ -155,6 +162,7 @@ fn conn_creds_to_repo_contents_request(
 ) -> Request<GetRepositoryContentsRequest> {
     let mut req = Request::new(GetRepositoryContentsRequest {
         repo_key: Some(conn_creds.repo_key),
+        session_key: conn_creds.session_key,
         // TODO: do namespaces correctly.
         namespace_name: "".to_string(),
         feature_name: "".to_string(),
@@ -189,12 +197,14 @@ async fn get_repo_version_remote(
     >,
     conn_creds: ConnectionCredentials,
 ) -> Result<String, tonic::Status> {
-    let mut req = Request::new(GetRepositoryVersionRequest {
-        repo_key: Some(conn_creds.repo_key),
-    });
-    req.metadata_mut().append(APIKEY, conn_creds.api_key);
     match dist_client
-        .get_repository_version(req)
+        .get_repository_version(add_api_key(
+            GetRepositoryVersionRequest {
+                repo_key: Some(conn_creds.repo_key),
+                session_key: conn_creds.session_key,
+            },
+            conn_creds.api_key,
+        ))
         .await
         .map(|resp| resp.into_inner())
     {
@@ -239,9 +249,6 @@ impl Store {
         dist_client: DistributionServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
-        config_client: ConfigurationServiceClient<
-            hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
-        >,
         bootstrap_data: Option<GetRepositoryContentsResponse>,
     ) -> Self {
         // TODO: worry about this join handle.
@@ -253,6 +260,7 @@ impl Store {
                 conn_creds: ConnectionCredentials {
                     repo_key: RepositoryKey::default(),
                     api_key: MetadataValue::from_static(""),
+                    session_key: "".to_string(),
                 },
             },
             Some(contents) => ConcurrentState {
@@ -261,13 +269,13 @@ impl Store {
                 conn_creds: ConnectionCredentials {
                     repo_key: RepositoryKey::default(),
                     api_key: MetadataValue::from_static(""),
+                    session_key: "".to_string(),
                 },
             },
         }));
         tokio::spawn(poll_loop(rx, dist_client.clone(), state.clone()));
         Self {
             dist_client,
-            _config_client: config_client,
             state,
             initialize_tx: Mutex::new(Some(tx)),
         }
@@ -277,29 +285,71 @@ impl Store {
         &self,
         repo_key: RepositoryKey,
         // TODO: handle multiple namespaces by iterating over namespaces or changing GetRepoContents
-        _namespaces: &[String],
+        namespaces: &[String],
         api_key: MetadataValue<Ascii>,
     ) -> Result<(), tonic::Status> {
-        let mut dist_req = Request::new(GetRepositoryContentsRequest {
-            repo_key: Some(repo_key.clone()),
-            ..Default::default()
-        });
-        // Add the apikey header
-        dist_req.metadata_mut().append(APIKEY, api_key.clone());
-        let success_resp = get_repo_contents_remote(self.dist_client.clone(), dist_req).await?;
+        // Proxy register call first
+        //
+        // Because we do this one line, we should drop the read lock right after.
+        let bootstrap_sha = self.state.read().unwrap().repo_version.clone();
+
+        let session_key = match self
+            .dist_client
+            .clone()
+            .register_client(add_api_key(
+                RegisterClientRequest {
+                    repo_key: Some(repo_key.clone()),
+                    initial_bootstrap_sha: bootstrap_sha,
+                    // TODO sidecar version
+                    sidecar_version: "".to_string(),
+                    namespace_list: Vec::from(namespaces),
+                },
+                api_key.clone(),
+            ))
+            .await
+        {
+            Ok(resp) => resp.into_inner().session_key,
+            Err(error) => {
+                // If we have an error registering, we probably can't reach lekko. If we operate off of a bootstrap
+                // we can continue to function off of that information. Unfortunately, we won't get updates. More
+                // work will have to be done here to recover on a loop. For now, we return an error such that we expect
+                // the SDK or client to retry the registration.
+                return Err(tonic::Status::resource_exhausted(format!(
+                    "error when registering with lekko {:?}",
+                    error
+                )));
+            }
+        };
+
+        let success_resp = get_repo_contents_remote(
+            self.dist_client.clone(),
+            add_api_key(
+                GetRepositoryContentsRequest {
+                    repo_key: Some(repo_key.clone()),
+                    ..Default::default()
+                },
+                api_key.clone(),
+            ),
+        )
+        .await?;
         let mut guard = self.initialize_tx.lock().unwrap();
         match guard.deref_mut().take() {
             Some(sender) => sender
                 .send(ConcurrentState {
                     cache: create_feature_store(success_resp.namespaces),
                     repo_version: success_resp.commit_sha,
-                    conn_creds: ConnectionCredentials { repo_key, api_key },
+                    conn_creds: ConnectionCredentials {
+                        repo_key,
+                        api_key,
+                        session_key,
+                    },
                 })
                 .map_err(|_| {
                     tonic::Status::internal(
                         "receiver dropped for register rpc. something is seriously wrong",
                     )
                 }),
+            // If we want multi-tenant sidecars in the future, this will have to change.
             None => Err(tonic::Status::already_exists(
                 "register has already been called on this sidecar, ignoring register RPC",
             )),
@@ -310,11 +360,11 @@ impl Store {
         &self,
         request: FeatureRequestParams,
     ) -> Result<FeatureData, tonic::Status> {
-        {
+        let session_key = {
             let ConcurrentState {
                 cache,
                 repo_version,
-                conn_creds: _,
+                conn_creds,
             } = &*self.state.read().unwrap();
             if let Some(feature) = cache.get(&FeatureKey {
                 namespace: request.namespace.clone(),
@@ -327,24 +377,30 @@ impl Store {
                     feature_sha: feature.version.clone(),
                 });
             }
+            conn_creds.session_key.clone()
             // drop read_lock
-        }
+        };
 
         println!(
             "Store: get feature {:?} without a register, falling back to remote",
             request
         );
-        let mut dist_req = Request::new(GetRepositoryContentsRequest {
-            repo_key: Some(RepositoryKey {
-                owner_name: request.rk.owner_name,
-                repo_name: request.rk.repo_name,
-            }),
-            namespace_name: request.namespace,
-            feature_name: request.feature,
-        });
-        // Add the apikey header
-        dist_req.metadata_mut().append(APIKEY, request.api_key);
-        let success_resp = get_repo_contents_remote(self.dist_client.clone(), dist_req).await?;
+        let success_resp = get_repo_contents_remote(
+            self.dist_client.clone(),
+            add_api_key(
+                GetRepositoryContentsRequest {
+                    repo_key: Some(RepositoryKey {
+                        owner_name: request.rk.owner_name,
+                        repo_name: request.rk.repo_name,
+                    }),
+                    session_key,
+                    namespace_name: request.namespace,
+                    feature_name: request.feature,
+                },
+                request.api_key,
+            ),
+        )
+        .await?;
         for namespace in success_resp.namespaces {
             for feature in namespace.features {
                 println!(
@@ -362,4 +418,10 @@ impl Store {
         }
         Err(tonic::Status::not_found("feature not found"))
     }
+}
+
+fn add_api_key<T: Message>(m: T, api_key: MetadataValue<Ascii>) -> tonic::Request<T> {
+    let mut r = Request::new(m);
+    r.metadata_mut().append(APIKEY, api_key);
+    r
 }
