@@ -58,32 +58,47 @@ all: build test format lint
 # Settable
 DOCKER_BINS := sidecar
 DOCKER_ORG := lekko
-
-ifneq (,$(findstring amd64,$(MAKECMDGOALS)))
-    DOCKER_BUILD_EXTRA_FLAGS := --platform=linux/amd64
-    DOCKER_EXTRA_TAG := amd64
-endif
+DOCKER_REMOTE := 525250420071.dkr.ecr.us-east-1.amazonaws.com
 
 # TODO: check our local machine, right now this just runs on M1 Mac w/ Docker Desktop.
-DOCKER_BUILD_EXTRA_FLAGS ?= --platform=linux/arm64
-DOCKER_EXTRA_TAG ?= arm64
-
 
 define dockerbinfunc
 .PHONY: dockerbuilddeps$(1)
 dockerbuilddeps$(1)::
 
+.PHONY: dockerbuildlocal$(1)
+dockerbuildlocal$(1): dockerbuilddeps$(1)
+	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_ORG)/$(1):latest -f Dockerfile.$(1) .
+
 .PHONY: dockerbuild$(1)
 dockerbuild$(1): dockerbuilddeps$(1)
-	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_ORG)/$(1):latest -f Dockerfile.$(1) .
-ifdef EXTRA_DOCKER_ORG
-	docker tag $(DOCKER_ORG)/$(1):latest $(EXTRA_DOCKER_ORG)/$(1):latest
-endif
-ifdef DOCKER_EXTRA_TAG
-	docker tag $(DOCKER_ORG)/$(1):latest $(DOCKER_ORG)/$(1):$(DOCKER_EXTRA_TAG)
-endif
+	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):amd64 -f Dockerfile.$(1) --platform=linux/amd64 .
 
+.PHONY: dockerpush$(1)
+dockerpush$(1): dockerbuilddeps$(1)
+# TODO: some main branch protection, check if there are any local changes, etc.
+	$(eval GIT_HASH := $(shell git rev-parse main))
+	$(eval DATE := $(shell date +'%Y-%m-%d'))
+	$(eval TAG := $(DATE)_$(GIT_HASH))
+	@read -p "Do you want to create and push a git tag in this format: $(TAG) [Press any key to continue]: "
+	git tag -f $(TAG)
+	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG) -f Dockerfile.$(1) --platform=linux/amd64 .
+
+	@read -p "Do you want to push this image: $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG) [Press any key to continue]: "
+	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(DOCKER_REMOTE)
+	docker push $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG)
+
+	@read -p "Do you want to push this image as latest in $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1)? If this is a test build, feel free to Ctrl+C now. [Press any key to continue]: "
+
+	$(eval MANIFEST := $(shell aws ecr batch-get-image --region us-east-1 --repository-name $(DOCKER_ORG)/$(1) --image-ids imageTag=$(TAG) --query 'images[].imageManifest' --output text))
+	aws ecr put-image --region us-east-1 --repository-name $(DOCKER_ORG)/$(1) --image-tag latest --image-manifest '$(MANIFEST)'
+
+	@read -p "Do you want to push this tag to main: $(TAG) [Press any key to continue]: "
+	git push origin --tags
+
+dockerbuildlocal:: dockerbuildlocal$(1)
 dockerbuild:: dockerbuild$(1)
+# Intentionally don't create a grouped dockerpush.
 endef
 
 $(foreach dockerbin,$(sort $(DOCKER_BINS)),$(eval $(call dockerbinfunc,$(dockerbin))))
