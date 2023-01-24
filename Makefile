@@ -68,11 +68,11 @@ dockerbuilddeps$(1)::
 
 .PHONY: dockerbuildlocal$(1)
 dockerbuildlocal$(1): dockerbuilddeps$(1)
-	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_ORG)/$(1):latest -f Dockerfile.$(1) .
+	docker build -t $(DOCKER_ORG)/$(1):latest -f Dockerfile.$(1) .
 
 .PHONY: dockerbuild$(1)
 dockerbuild$(1): dockerbuilddeps$(1)
-	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):amd64 -f Dockerfile.$(1) --platform=linux/amd64 .
+	docker build -t $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):amd64 -f Dockerfile.$(1) --platform=linux/amd64 .
 
 .PHONY: dockerpush$(1)
 dockerpush$(1): dockerbuilddeps$(1)
@@ -82,7 +82,7 @@ dockerpush$(1): dockerbuilddeps$(1)
 	$(eval TAG := $(DATE)_$(GIT_HASH))
 	@read -p "Do you want to create and push a git tag in this format: $(TAG) [Press any key to continue]: "
 	git tag -f $(TAG)
-	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG) -f Dockerfile.$(1) --platform=linux/amd64 .
+	docker build -t $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG) -f Dockerfile.$(1) --platform=linux/amd64 .
 
 	@read -p "Do you want to push this image: $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG) [Press any key to continue]: "
 	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(DOCKER_REMOTE)
@@ -90,11 +90,17 @@ dockerpush$(1): dockerbuilddeps$(1)
 
 	@read -p "Do you want to push this image as latest in $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1)? If this is a test build, feel free to Ctrl+C now. [Press any key to continue]: "
 
-	$(eval MANIFEST := $(shell aws ecr batch-get-image --region us-east-1 --repository-name $(DOCKER_ORG)/$(1) --image-ids imageTag=$(TAG) --query 'images[].imageManifest' --output text))
-	aws ecr put-image --region us-east-1 --repository-name $(DOCKER_ORG)/$(1) --image-tag latest --image-manifest '$(MANIFEST)'
+	@$(MAKE) dockertaglatest$(1)
 
 	@read -p "Do you want to push this tag to main: $(TAG) [Press any key to continue]: "
 	git push origin --tags
+
+dockertaglatest$(1):
+	$(eval GIT_HASH := $(shell git rev-parse HEAD))
+	$(eval DATE := $(shell date +'%Y-%m-%d'))
+	$(eval TAG := $(DATE)_$(GIT_HASH))
+	$(eval MANIFEST := $(shell aws ecr batch-get-image --region us-east-1 --repository-name $(DOCKER_ORG)/$(1) --image-ids imageTag=$(TAG) --query 'images[].imageManifest' --output text))
+	aws ecr put-image --region us-east-1 --repository-name $(DOCKER_ORG)/$(1) --image-tag latest --image-manifest '${MANIFEST}'
 
 dockerbuildlocal:: dockerbuildlocal$(1)
 dockerbuild:: dockerbuild$(1)
