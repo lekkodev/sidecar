@@ -18,7 +18,7 @@ use tonic::transport::{Server, Uri};
 /// Lekko sidecar that provides the host application with config
 /// updates from Lekko and performs local evaluation.
 struct Args {
-    #[arg(short, long, default_value_t=String::from("https://grpc.lekko.dev"))]
+    #[arg(short, long, default_value_t=String::from("https://prod.api.lekko.dev"))]
     /// Address to communicate with lekko backend.
     lekko_addr: String,
 
