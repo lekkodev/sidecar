@@ -6,7 +6,7 @@ use sidecar::gen::lekko::backend::v1beta1::configuration_service_server::Configu
 use sidecar::gen::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 
 use sidecar::metrics::Metrics;
-use sidecar::service::{Service, Mode};
+use sidecar::service::{Mode, Service};
 use sidecar::store::Store;
 use std::net::SocketAddr;
 use tonic::codegen::CompressionEncoding;

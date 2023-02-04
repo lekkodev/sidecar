@@ -6,7 +6,11 @@ use prost::{
     DecodeError,
 };
 use prost_types::{value::Kind, Value};
-use tonic::{body::BoxBody, metadata::{MetadataMap, MetadataValue}, Request, Response, Status};
+use tonic::{
+    body::BoxBody,
+    metadata::{MetadataMap, MetadataValue},
+    Request, Response, Status,
+};
 
 use crate::{
     evaluate::evaluator::evaluate,
@@ -55,11 +59,11 @@ impl ConfigurationService for Service {
         &self,
         request: Request<RegisterRequest>,
     ) -> Result<tonic::Response<RegisterResponse>, tonic::Status> {
-	if matches!(self.mode, Mode::Proxy) || matches!(self.mode, Mode::Static) {
-	    // Here we can effectively ignore the register call.
-	    // We should reconsider some design here to make sure the SDK matches the sidecar configuration.
-	    return Ok(Response::new(RegisterResponse::default()))
-	}
+        if matches!(self.mode, Mode::Proxy) || matches!(self.mode, Mode::Static) {
+            // Here we can effectively ignore the register call.
+            // We should reconsider some design here to make sure the SDK matches the sidecar configuration.
+            return Ok(Response::new(RegisterResponse::default()));
+        }
         let apikey = request
             .metadata()
             .get(APIKEY)
@@ -71,56 +75,68 @@ impl ConfigurationService for Service {
             .await?;
         Ok(Response::new(RegisterResponse::default()))
     }
-    
+
     async fn get_bool_value(
         &self,
         request: Request<GetBoolValueRequest>,
     ) -> Result<tonic::Response<GetBoolValueResponse>, tonic::Status> {
         println!("Got a request for GetBoolValue, evaluating");
         let (some_feature_data, api_key) = match self.mode {
-	    Mode::Proxy => {
-            println!("Got a request for GetBoolValue, proxying");
-            let mut proxy_req = Request::new(request.get_ref().clone());
-            self.proxy_headers(&mut proxy_req, request.metadata());
-            let resp = self.config_client.clone().get_bool_value(proxy_req).await;
-            if let Err(e) = resp {
-                println!("error in proxying {:?}", e);
-                return Err(e);
+            Mode::Proxy => {
+                println!("Got a request for GetBoolValue, proxying");
+                let mut proxy_req = Request::new(request.get_ref().clone());
+                self.proxy_headers(&mut proxy_req, request.metadata());
+                let resp = self.config_client.clone().get_bool_value(proxy_req).await;
+                if let Err(e) = resp {
+                    println!("error in proxying {:?}", e);
+                    return Err(e);
+                }
+                return resp;
             }
-            return resp;
-            },
-	    Mode::Static => {
-		let inner = request.get_ref();
-		(self.store.get_feature_local(FeatureRequestParams { api_key: MetadataValue::from_static(""), rk: inner.repo_key.clone().unwrap(), namespace: inner.namespace.clone(), feature: inner.key.clone()}).ok_or_else(|| Status::invalid_argument("no feature found in static mode"))?, MetadataValue::from_static(""))
-	    },
-	    Mode::Default => {
-        let apikey = request
-            .metadata()
-            .get(APIKEY)
-            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
-            .to_owned();
-        let inner = request.get_ref();
-        let rk = inner
-		    .repo_key
-		    .clone()
-            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
-		let feature_data = self
-            .store
-            .get_feature(FeatureRequestParams {
-                api_key: apikey.clone(),
-                rk: rk.clone(),
-                namespace: inner.namespace.clone(),
-                feature: inner.key.clone(),
-            })
-            .await;
-        if let Err(error) = feature_data {
-            println!("error getting feature datpa {:?}", error);
-            return Err(error);
-        }
-		(feature_data.unwrap(), apikey)
-	    }
-	};
-	let inner = request.into_inner();
+            Mode::Static => {
+                let inner = request.get_ref();
+                (
+                    self.store
+                        .get_feature_local(FeatureRequestParams {
+                            api_key: MetadataValue::from_static(""),
+                            rk: inner.repo_key.clone().unwrap(),
+                            namespace: inner.namespace.clone(),
+                            feature: inner.key.clone(),
+                        })
+                        .ok_or_else(|| {
+                            Status::invalid_argument("no feature found in static mode")
+                        })?,
+                    MetadataValue::from_static(""),
+                )
+            }
+            Mode::Default => {
+                let apikey = request
+                    .metadata()
+                    .get(APIKEY)
+                    .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
+                    .to_owned();
+                let inner = request.get_ref();
+                let rk = inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
+                let feature_data = self
+                    .store
+                    .get_feature(FeatureRequestParams {
+                        api_key: apikey.clone(),
+                        rk: rk.clone(),
+                        namespace: inner.namespace.clone(),
+                        feature: inner.key.clone(),
+                    })
+                    .await;
+                if let Err(error) = feature_data {
+                    println!("error getting feature datpa {:?}", error);
+                    return Err(error);
+                }
+                (feature_data.unwrap(), apikey)
+            }
+        };
+        let inner = request.into_inner();
         let eval_result = evaluate(&some_feature_data.feature, &inner.context)?;
         self.metrics.track_flag_evaluation(
             inner.repo_key.as_ref().unwrap(),
@@ -134,7 +150,7 @@ impl ConfigurationService for Service {
         if let Err(e) = b {
             return Err(tonic::Status::internal(e.to_string()));
         }
-	Ok(Response::new(GetBoolValueResponse { value: b.unwrap() }))
+        Ok(Response::new(GetBoolValueResponse { value: b.unwrap() }))
     }
 
     async fn get_proto_value(
