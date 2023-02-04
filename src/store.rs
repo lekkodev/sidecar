@@ -356,6 +356,26 @@ impl Store {
         }
     }
 
+    pub fn get_feature_local(
+	&self,
+	request: FeatureRequestParams
+    ) -> Option<FeatureData> {
+        let ConcurrentState {
+            cache,
+            repo_version,
+	    conn_creds: _,
+        } = &*self.state.read().unwrap();
+        return cache.get(&FeatureKey {
+            namespace: request.namespace.clone(),
+            feature: request.feature.clone(),
+        }).map(|feature| FeatureData {
+            feature: feature.feature.clone(),
+            commit_sha: repo_version.clone(),
+            feature_sha: feature.version.clone(),
+        })
+    }
+
+    
     pub async fn get_feature(
         &self,
         request: FeatureRequestParams,
