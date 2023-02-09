@@ -1,14 +1,16 @@
+use std::collections::HashMap;
+
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
 
 use prost::{
     encoding::bool::{self},
-    DecodeError,
+    DecodeError, Message,
 };
-use prost_types::{value::Kind, Value};
+use prost_types::value::Kind;
 use tonic::{
     body::BoxBody,
-    metadata::{MetadataMap, MetadataValue},
+    metadata::{Ascii, MetadataMap, MetadataValue},
     Request, Response, Status,
 };
 
@@ -18,7 +20,7 @@ use crate::{
         configuration_service_client::ConfigurationServiceClient,
         configuration_service_server::ConfigurationService, GetBoolValueRequest,
         GetBoolValueResponse, GetJsonValueRequest, GetJsonValueResponse, GetProtoValueRequest,
-        GetProtoValueResponse, RegisterRequest, RegisterResponse,
+        GetProtoValueResponse, RegisterRequest, RegisterResponse, Value,
     },
     metrics::Metrics,
     store::Store,
@@ -30,15 +32,16 @@ use crate::{
 // Default implies waiting for a Register call, fetching from a bootstrap,
 // and evaluating locally while polling for updates.
 //
-// Proxy always fetches from Lekko ignoring local caches, resulting in strong
+// Consistent always fetches from Lekko ignoring local caches, resulting in strong
 // consistency.
 //
-// Static fetches from the bootstrap and always evaluates against those values.
+// Static fetches from the bootstrap and always evaluates against those values. No
+// connection is made to a Lekko services.
 #[derive(clap::ValueEnum, Clone, Default, Debug)]
 pub enum Mode {
     #[default]
     Default,
-    Proxy,
+    Consistent,
     Static,
 }
 
@@ -52,6 +55,36 @@ pub struct Service {
     pub metrics: Metrics,
 }
 
+trait SharedRequest {
+    fn metadata(&self) -> &MetadataMap;
+}
+
+impl Service {
+    fn get_value_local<T>(
+        &self,
+        feature: FeatureRequestParams,
+        context: &HashMap<String, Value>,
+        api_key: MetadataValue<Ascii>,
+    ) -> Result<T, tonic::Status>
+    where
+        T: Message + Default,
+    {
+        let feature_data = self
+            .store
+            .get_feature_local(feature.clone())
+            .ok_or_else(|| Status::invalid_argument("feature not found"))?;
+        let eval_result = evaluate(&feature_data.feature, context)?;
+        self.metrics.track_flag_evaluation(
+            &feature,
+            &feature_data,
+            context,
+            &eval_result.1,
+            &api_key,
+        );
+        types::from_any(&eval_result.0).map_err(|e| tonic::Status::internal(e.to_string()))
+    }
+}
+
 // TODO: Send batched flag evaluation metrics back to the backend after local evaluation.
 #[tonic::async_trait]
 impl ConfigurationService for Service {
@@ -59,7 +92,7 @@ impl ConfigurationService for Service {
         &self,
         request: Request<RegisterRequest>,
     ) -> Result<tonic::Response<RegisterResponse>, tonic::Status> {
-        if matches!(self.mode, Mode::Proxy) || matches!(self.mode, Mode::Static) {
+        if matches!(self.mode, Mode::Consistent) || matches!(self.mode, Mode::Static) {
             // Here we can effectively ignore the register call.
             // We should reconsider some design here to make sure the SDK matches the sidecar configuration.
             return Ok(Response::new(RegisterResponse::default()));
@@ -80,85 +113,50 @@ impl ConfigurationService for Service {
         &self,
         request: Request<GetBoolValueRequest>,
     ) -> Result<tonic::Response<GetBoolValueResponse>, tonic::Status> {
-        println!("Got a request for GetBoolValue, evaluating");
-        let (some_feature_data, api_key) = match self.mode {
-            Mode::Proxy => {
-                println!("Got a request for GetBoolValue, proxying");
-                let mut proxy_req = Request::new(request.get_ref().clone());
-                self.proxy_headers(&mut proxy_req, request.metadata());
-                let resp = self.config_client.clone().get_bool_value(proxy_req).await;
-                if let Err(e) = resp {
-                    println!("error in proxying {:?}", e);
-                    return Err(e);
-                }
-                return resp;
+        let apikey = request
+            .metadata()
+            .get(APIKEY)
+            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
+            .to_owned();
+
+        if matches!(self.mode, Mode::Consistent) {
+            let mut proxy_req = Request::new(request.get_ref().clone());
+            self.proxy_headers(&mut proxy_req, request.metadata());
+            let resp = self.config_client.clone().get_bool_value(proxy_req).await;
+            if let Err(e) = resp {
+                println!("error in proxying {:?}", e);
+                return Err(e);
             }
-            Mode::Static => {
-                let inner = request.get_ref();
-                (
-                    self.store
-                        .get_feature_local(FeatureRequestParams {
-                            api_key: MetadataValue::from_static(""),
-                            rk: inner.repo_key.clone().unwrap(),
-                            namespace: inner.namespace.clone(),
-                            feature: inner.key.clone(),
-                        })
-                        .ok_or_else(|| {
-                            Status::invalid_argument("no feature found in static mode")
-                        })?,
-                    MetadataValue::from_static(""),
-                )
-            }
-            Mode::Default => {
-                let apikey = request
-                    .metadata()
-                    .get(APIKEY)
-                    .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
-                    .to_owned();
-                let inner = request.get_ref();
-                let rk = inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
-                let feature_data = self
-                    .store
-                    .get_feature(FeatureRequestParams {
-                        api_key: apikey.clone(),
-                        rk: rk.clone(),
-                        namespace: inner.namespace.clone(),
-                        feature: inner.key.clone(),
-                    })
-                    .await;
-                if let Err(error) = feature_data {
-                    println!("error getting feature datpa {:?}", error);
-                    return Err(error);
-                }
-                (feature_data.unwrap(), apikey)
-            }
-        };
-        let inner = request.into_inner();
-        let eval_result = evaluate(&some_feature_data.feature, &inner.context)?;
-        self.metrics.track_flag_evaluation(
-            inner.repo_key.as_ref().unwrap(),
-            &inner.namespace,
-            &some_feature_data,
-            &inner.context,
-            &eval_result.1,
-            &api_key,
-        );
-        let b: Result<bool, DecodeError> = types::from_any(&eval_result.0);
-        if let Err(e) = b {
-            return Err(tonic::Status::internal(e.to_string()));
+            return resp;
         }
-        Ok(Response::new(GetBoolValueResponse { value: b.unwrap() }))
+
+        let inner = request.into_inner();
+        Ok(Response::new(GetBoolValueResponse {
+            value: self.get_value_local(
+                FeatureRequestParams {
+                    rk: inner.repo_key.clone().unwrap(),
+                    namespace: inner.namespace.clone(),
+                    feature: inner.key.clone(),
+                },
+                &inner.context,
+                apikey,
+            )?,
+        }))
     }
 
     async fn get_proto_value(
         &self,
         request: Request<GetProtoValueRequest>,
     ) -> Result<tonic::Response<GetProtoValueResponse>, tonic::Status> {
-        if matches!(self.mode, Mode::Proxy) {
-            println!("Got a request for GetProtoValue, proxying");
+        println!("Got a request for GetProtoValue");
+
+        let apikey = request
+            .metadata()
+            .get(APIKEY)
+            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
+            .to_owned();
+
+        if matches!(self.mode, Mode::Consistent) {
             let mut proxy_req = Request::new(request.get_ref().clone());
             self.proxy_headers(&mut proxy_req, request.metadata());
             let resp = self.config_client.clone().get_proto_value(proxy_req).await;
@@ -169,49 +167,32 @@ impl ConfigurationService for Service {
             return resp;
         }
 
-        println!("Got a request for GetProtoValue, evaluating");
-        let apikey = request
-            .metadata()
-            .get(APIKEY)
-            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
-            .to_owned();
         let inner = request.into_inner();
-        let rk = inner
-            .repo_key
-            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
-        let feature_data = self
-            .store
-            .get_feature(FeatureRequestParams {
-                api_key: apikey.clone(),
-                rk: rk.clone(),
-                namespace: inner.namespace.clone(),
-                feature: inner.key.clone(),
-            })
-            .await;
-        if let Err(error) = feature_data {
-            println!("error getting feature data {:?}", error);
-            return Err(error);
-        }
-        let some_feature_data = feature_data.unwrap();
-        let eval_result = evaluate(&some_feature_data.feature, &inner.context)?;
-        self.metrics.track_flag_evaluation(
-            &rk,
-            &inner.namespace,
-            &some_feature_data,
-            &inner.context,
-            &eval_result.1,
-            &apikey,
-        );
         Ok(Response::new(GetProtoValueResponse {
-            value: Some(eval_result.0),
+            value: Some(self.get_value_local(
+                FeatureRequestParams {
+                    rk: inner.repo_key.clone().unwrap(),
+                    namespace: inner.namespace.clone(),
+                    feature: inner.key.clone(),
+                },
+                &inner.context,
+                apikey,
+            )?),
         }))
     }
     async fn get_json_value(
         &self,
         request: Request<GetJsonValueRequest>,
     ) -> Result<tonic::Response<GetJsonValueResponse>, tonic::Status> {
-        if matches!(self.mode, Mode::Proxy) {
-            println!("Got a request for GetJSONValue, proxying");
+        println!("Got a request for GetJSONValue, proxying");
+
+        let apikey = request
+            .metadata()
+            .get(APIKEY)
+            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
+            .to_owned();
+
+        if matches!(self.mode, Mode::Consistent) {
             let mut proxy_req = Request::new(request.get_ref().clone());
             self.proxy_headers(&mut proxy_req, request.metadata());
             let resp = self.config_client.clone().get_json_value(proxy_req).await;
@@ -221,46 +202,17 @@ impl ConfigurationService for Service {
             }
             return resp;
         }
-        println!("Got a request for GetJSONValue, evaluating");
-        let apikey = request
-            .metadata()
-            .get(APIKEY)
-            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
-            .to_owned();
+
         let inner = request.into_inner();
-        let rk = inner
-            .repo_key
-            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
-        let feature_data = self
-            .store
-            .get_feature(FeatureRequestParams {
-                api_key: apikey.clone(),
-                rk: rk.clone(),
+        let struct_value = self.get_value_local::<prost_types::Value>(
+            FeatureRequestParams {
+                rk: inner.repo_key.clone().unwrap(),
                 namespace: inner.namespace.clone(),
                 feature: inner.key.clone(),
-            })
-            .await;
-        if let Err(error) = feature_data {
-            println!("error getting feature data {:?}", error);
-            return Err(error);
-        }
-        let some_feature_data = feature_data.unwrap();
-        let eval_result = evaluate(&some_feature_data.feature, &inner.context)?;
-        self.metrics.track_flag_evaluation(
-            &rk,
-            &inner.namespace,
-            &some_feature_data,
+            },
             &inner.context,
-            &eval_result.1,
-            &apikey,
-        );
-        let struct_value: Value = match types::from_any(&eval_result.0) {
-            Err(err) => {
-                println!("error from decoding from any {:?}", err);
-                return Err(Status::internal("invalid internal protobuf type"));
-            }
-            Ok(v) => v,
-        };
+            apikey,
+        )?;
 
         Ok(Response::new(GetJsonValueResponse {
             value: serde_json::to_vec(&ValueWrapper(&struct_value)).map_err(|e| {

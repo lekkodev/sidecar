@@ -373,69 +373,6 @@ impl Store {
                 feature_sha: feature.version.clone(),
             });
     }
-
-    pub async fn get_feature(
-        &self,
-        request: FeatureRequestParams,
-    ) -> Result<FeatureData, tonic::Status> {
-        let session_key = {
-            let ConcurrentState {
-                cache,
-                repo_version,
-                conn_creds,
-            } = &*self.state.read().unwrap();
-            if let Some(feature) = cache.get(&FeatureKey {
-                namespace: request.namespace.clone(),
-                feature: request.feature.clone(),
-            }) {
-                // TODO: revisit if we should borrow in this signature.
-                return Ok(FeatureData {
-                    feature: feature.feature.clone(),
-                    commit_sha: repo_version.clone(),
-                    feature_sha: feature.version.clone(),
-                });
-            }
-            conn_creds.session_key.clone()
-            // drop read_lock
-        };
-
-        println!(
-            "Store: get feature {:?} without a register, falling back to remote",
-            request
-        );
-        let success_resp = get_repo_contents_remote(
-            self.dist_client.clone(),
-            add_api_key(
-                GetRepositoryContentsRequest {
-                    repo_key: Some(RepositoryKey {
-                        owner_name: request.rk.owner_name,
-                        repo_name: request.rk.repo_name,
-                    }),
-                    session_key,
-                    namespace_name: request.namespace,
-                    feature_name: request.feature,
-                },
-                request.api_key,
-            ),
-        )
-        .await?;
-        for namespace in success_resp.namespaces {
-            for feature in namespace.features {
-                println!(
-                    "received feature {} with blob sha {}",
-                    feature.name, feature.sha
-                );
-                if let Some(some_feature) = feature.feature {
-                    return Ok(FeatureData {
-                        commit_sha: success_resp.commit_sha,
-                        feature_sha: feature.sha,
-                        feature: some_feature,
-                    });
-                }
-            }
-        }
-        Err(tonic::Status::not_found("feature not found"))
-    }
 }
 
 fn add_api_key<T: Message>(m: T, api_key: MetadataValue<Ascii>) -> tonic::Request<T> {

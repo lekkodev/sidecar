@@ -21,7 +21,7 @@ use crate::{
         ContextKey, FlagEvaluationEvent, RepositoryKey, SendFlagEvaluationMetricsRequest, Value,
     },
     store::FeatureData,
-    types::APIKEY,
+    types::{FeatureRequestParams, APIKEY},
 };
 
 // Component responsible for receiving evaluation metrics as they come in
@@ -58,18 +58,17 @@ impl Metrics {
     // This method is non-blocking.
     pub fn track_flag_evaluation(
         &self,
-        rk: &RepositoryKey,
-        namespace_name: &str,
+        feature_params: &FeatureRequestParams,
         feature_data: &FeatureData,
         context: &HashMap<String, Value>,
         result_path: &[usize],
         apikey: &MetadataValue<Ascii>,
     ) {
         let event = FlagEvaluationEvent {
-            repo_key: Some(rk.clone()),
+            repo_key: Some(feature_params.rk.clone()),
             commit_sha: feature_data.commit_sha.clone(),
             feature_sha: feature_data.feature_sha.clone(),
-            namespace_name: namespace_name.to_owned(),
+            namespace_name: feature_params.namespace.to_owned(),
             feature_name: feature_data.feature.key.clone(),
             context_keys: context
                 .iter()
