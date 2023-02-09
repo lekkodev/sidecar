@@ -18,7 +18,7 @@ use crate::{
     gen::lekko::backend::v1beta1::{
         distribution_service_client::DistributionServiceClient,
         value::Kind::{BoolValue, DoubleValue, IntValue, StringValue},
-        ContextKey, FlagEvaluationEvent, RepositoryKey, SendFlagEvaluationMetricsRequest, Value,
+        ContextKey, FlagEvaluationEvent, SendFlagEvaluationMetricsRequest, Value,
     },
     store::FeatureData,
     types::{FeatureRequestParams, APIKEY},
@@ -36,6 +36,7 @@ pub struct TrackFlagEvaluationEvent {
     event: FlagEvaluationEvent,
 }
 
+// TODO: Send batched flag evaluation metrics back to the backend after local evaluation.
 impl Metrics {
     pub fn new(
         dist_client: DistributionServiceClient<
@@ -62,6 +63,7 @@ impl Metrics {
         feature_data: &FeatureData,
         context: &HashMap<String, Value>,
         result_path: &[usize],
+        // TODO: we should somehow get the api key from registration, instead of relying on it every time.
         apikey: &MetadataValue<Ascii>,
     ) {
         let event = FlagEvaluationEvent {

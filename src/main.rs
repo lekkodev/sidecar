@@ -60,7 +60,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     );
     let bootstrap_data = match args.repo_path {
-        None => None,
+        None => {
+            if matches!(args.mode, Mode::Static) {
+                panic!("no bootstrap provided for sidecar configured to be static")
+            }
+            None
+        }
         Some(rp) => {
             let mut bootstrap = Bootstrap::new(rp);
             Some(

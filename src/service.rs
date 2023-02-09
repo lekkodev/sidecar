@@ -2,11 +2,7 @@ use std::collections::HashMap;
 
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
-
-use prost::{
-    encoding::bool::{self},
-    DecodeError, Message,
-};
+use prost::Message;
 use prost_types::value::Kind;
 use tonic::{
     body::BoxBody,
@@ -60,6 +56,16 @@ trait SharedRequest {
 }
 
 impl Service {
+    // Sets the headers that we wish to forward to lekko. The apikey header is copied over as
+    // the server needs it to authenticate the caller.
+    fn proxy_headers<T>(&self, proxy_request: &mut Request<T>, incoming_headers: &MetadataMap) {
+        if let Some(apikey) = incoming_headers.get(APIKEY) {
+            proxy_request
+                .metadata_mut()
+                .append(APIKEY, apikey.to_owned());
+        }
+    }
+
     fn get_value_local<T>(
         &self,
         feature: FeatureRequestParams,
@@ -85,7 +91,6 @@ impl Service {
     }
 }
 
-// TODO: Send batched flag evaluation metrics back to the backend after local evaluation.
 #[tonic::async_trait]
 impl ConfigurationService for Service {
     async fn register(
@@ -180,6 +185,7 @@ impl ConfigurationService for Service {
             )?),
         }))
     }
+
     async fn get_json_value(
         &self,
         request: Request<GetJsonValueRequest>,
@@ -259,18 +265,6 @@ where
     S: ::serde::Serializer,
 {
     serializer.collect_seq(st.values.iter().map(ValueWrapper))
-}
-
-impl Service {
-    // Sets the headers that we wish to forward to lekko. The apikey header is copied over as
-    // the server needs it to authenticate the caller.
-    fn proxy_headers<T>(&self, proxy_request: &mut Request<T>, incoming_headers: &MetadataMap) {
-        if let Some(apikey) = incoming_headers.get(APIKEY) {
-            proxy_request
-                .metadata_mut()
-                .append(APIKEY, apikey.to_owned());
-        }
-    }
 }
 
 #[cfg(test)]
