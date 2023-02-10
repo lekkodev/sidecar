@@ -87,18 +87,12 @@ async fn poll_loop(
             let version = data.repo_version.clone();
             let mut state_guard = state.write().unwrap();
             *state_guard = data;
-            println!(
-                "got register message, starting polling from version: {}",
-                version
-            );
+            println!("got register message, starting polling from version: {version}",);
             state_guard.conn_creds.clone()
         }
         Err(err) => {
             // TODO: handle panics better.
-            panic!(
-                "error encountered when initializing sidecar state: {:?}",
-                err
-            )
+            panic!("error encountered when initializing sidecar state: {err:?}",)
         }
     };
 
@@ -112,7 +106,7 @@ async fn poll_loop(
                 Ok(v) => v,
                 Err(err) => {
                     // TODO: exp backoff when we have errors
-                    println!("got an error when fetching version {:#?}", err);
+                    println!("got an error when fetching version {err:?}");
                     continue;
                 }
             };
@@ -125,10 +119,7 @@ async fn poll_loop(
             // release read lock to fetch data
         };
 
-        println!(
-            "polled for new version: {}, will fetch from remote",
-            new_version
-        );
+        println!("polled for new version: {new_version}, will fetch from remote",);
 
         match get_repo_contents_remote(
             dist_client.clone(),
@@ -144,14 +135,11 @@ async fn poll_loop(
                     state_guard.repo_version = res.commit_sha;
                     // drop state_guard
                 }
-                println!("updated to new version: {}", new_version);
+                println!("updated to new version: {new_version}");
             }
             Err(err) => {
                 // This is a problem, error loudly.
-                println!(
-                    "error encountered when fetching full repository state: {:?}",
-                    err
-                );
+                println!("error encountered when fetching full repository state: {err:?}",);
             }
         }
     }
@@ -209,12 +197,9 @@ async fn get_repo_version_remote(
         .map(|resp| resp.into_inner())
     {
         Ok(resp) => Ok(resp.commit_sha),
-        Err(error) => {
-            println!(
-                "error fetching repo version from distribution service {:?}",
-                error
-            );
-            Err(error)
+        Err(err) => {
+            println!("error fetching repo version from distribution service {err:?}",);
+            Err(err)
         }
     }
 }
@@ -231,15 +216,12 @@ async fn get_repo_contents_remote(
         .map(|resp| resp.into_inner())
     {
         Ok(resp) => {
-            println!("received contents for commit sha {}", resp.commit_sha,);
+            println!("received contents for commit sha {}", resp.commit_sha);
             Ok(resp)
         }
-        Err(error) => {
-            println!(
-                "error fetching feature from distribution service {:?}",
-                error
-            );
-            Err(error)
+        Err(err) => {
+            println!("error fetching feature from distribution service {err:?}",);
+            Err(err)
         }
     }
 }
@@ -251,7 +233,6 @@ impl Store {
         >,
         bootstrap_data: Option<GetRepositoryContentsResponse>,
     ) -> Self {
-        // TODO: worry about this join handle.
         let (tx, rx) = tokio::sync::oneshot::channel::<ConcurrentState>();
         let state = Arc::new(RwLock::new(match bootstrap_data {
             None => ConcurrentState {
@@ -273,6 +254,7 @@ impl Store {
                 },
             },
         }));
+        // TODO: worry about this join handle.
         tokio::spawn(poll_loop(rx, dist_client.clone(), state.clone()));
         Self {
             dist_client,
@@ -309,14 +291,13 @@ impl Store {
             .await
         {
             Ok(resp) => resp.into_inner().session_key,
-            Err(error) => {
+            Err(err) => {
                 // If we have an error registering, we probably can't reach lekko. If we operate off of a bootstrap
                 // we can continue to function off of that information. Unfortunately, we won't get updates. More
                 // work will have to be done here to recover on a loop. For now, we return an error such that we expect
                 // the SDK or client to retry the registration.
                 return Err(tonic::Status::resource_exhausted(format!(
-                    "error when registering with lekko {:?}",
-                    error
+                    "error when registering with lekko {err:?}",
                 )));
             }
         };
@@ -356,67 +337,22 @@ impl Store {
         }
     }
 
-    pub async fn get_feature(
-        &self,
-        request: FeatureRequestParams,
-    ) -> Result<FeatureData, tonic::Status> {
-        let session_key = {
-            let ConcurrentState {
-                cache,
-                repo_version,
-                conn_creds,
-            } = &*self.state.read().unwrap();
-            if let Some(feature) = cache.get(&FeatureKey {
+    pub fn get_feature_local(&self, request: FeatureRequestParams) -> Option<FeatureData> {
+        let ConcurrentState {
+            cache,
+            repo_version,
+            conn_creds: _,
+        } = &*self.state.read().unwrap();
+        return cache
+            .get(&FeatureKey {
                 namespace: request.namespace.clone(),
-                feature: request.feature.clone(),
-            }) {
-                // TODO: revisit if we should borrow in this signature.
-                return Ok(FeatureData {
-                    feature: feature.feature.clone(),
-                    commit_sha: repo_version.clone(),
-                    feature_sha: feature.version.clone(),
-                });
-            }
-            conn_creds.session_key.clone()
-            // drop read_lock
-        };
-
-        println!(
-            "Store: get feature {:?} without a register, falling back to remote",
-            request
-        );
-        let success_resp = get_repo_contents_remote(
-            self.dist_client.clone(),
-            add_api_key(
-                GetRepositoryContentsRequest {
-                    repo_key: Some(RepositoryKey {
-                        owner_name: request.rk.owner_name,
-                        repo_name: request.rk.repo_name,
-                    }),
-                    session_key,
-                    namespace_name: request.namespace,
-                    feature_name: request.feature,
-                },
-                request.api_key,
-            ),
-        )
-        .await?;
-        for namespace in success_resp.namespaces {
-            for feature in namespace.features {
-                println!(
-                    "received feature {} with blob sha {}",
-                    feature.name, feature.sha
-                );
-                if let Some(some_feature) = feature.feature {
-                    return Ok(FeatureData {
-                        commit_sha: success_resp.commit_sha,
-                        feature_sha: feature.sha,
-                        feature: some_feature,
-                    });
-                }
-            }
-        }
-        Err(tonic::Status::not_found("feature not found"))
+                feature: request.feature,
+            })
+            .map(|feature| FeatureData {
+                feature: feature.feature.clone(),
+                commit_sha: repo_version.clone(),
+                feature_sha: feature.version.clone(),
+            });
     }
 }
 

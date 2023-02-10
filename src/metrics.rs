@@ -18,10 +18,10 @@ use crate::{
     gen::lekko::backend::v1beta1::{
         distribution_service_client::DistributionServiceClient,
         value::Kind::{BoolValue, DoubleValue, IntValue, StringValue},
-        ContextKey, FlagEvaluationEvent, RepositoryKey, SendFlagEvaluationMetricsRequest, Value,
+        ContextKey, FlagEvaluationEvent, SendFlagEvaluationMetricsRequest, Value,
     },
     store::FeatureData,
-    types::APIKEY,
+    types::{FeatureRequestParams, APIKEY},
 };
 
 // Component responsible for receiving evaluation metrics as they come in
@@ -36,6 +36,7 @@ pub struct TrackFlagEvaluationEvent {
     event: FlagEvaluationEvent,
 }
 
+// TODO: Send batched flag evaluation metrics back to the backend after local evaluation.
 impl Metrics {
     pub fn new(
         dist_client: DistributionServiceClient<
@@ -58,18 +59,18 @@ impl Metrics {
     // This method is non-blocking.
     pub fn track_flag_evaluation(
         &self,
-        rk: &RepositoryKey,
-        namespace_name: &str,
+        feature_params: &FeatureRequestParams,
         feature_data: &FeatureData,
         context: &HashMap<String, Value>,
         result_path: &[usize],
+        // TODO: we should somehow get the api key from registration, instead of relying on it every time.
         apikey: &MetadataValue<Ascii>,
     ) {
         let event = FlagEvaluationEvent {
-            repo_key: Some(rk.clone()),
+            repo_key: Some(feature_params.rk.clone()),
             commit_sha: feature_data.commit_sha.clone(),
             feature_sha: feature_data.feature_sha.clone(),
-            namespace_name: namespace_name.to_owned(),
+            namespace_name: feature_params.namespace.to_owned(),
             feature_name: feature_data.feature.key.clone(),
             context_keys: context
                 .iter()
@@ -88,10 +89,7 @@ impl Metrics {
             event,
         });
         if let Err(e) = result {
-            println!(
-                "failed to send metrics event on mpsc channel {:?}",
-                e.to_string()
-            );
+            println!("failed to send metrics event on mpsc channel {e:?}",);
         }
     }
 
@@ -114,7 +112,7 @@ impl Metrics {
                 },
                 Some(result) = futures.next() => {
                     if let Err(e) = result {
-                        println!("error handling send flag evaluation future {:?}", e);
+                        println!("error handling send flag evaluation future {e:?}");
                     }
                 },
                 else => break,

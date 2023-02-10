@@ -1,6 +1,5 @@
 use prost::{DecodeError, Message};
 use prost_types::Any;
-use tonic::metadata::{Ascii, MetadataValue};
 
 use crate::gen::lekko::backend::v1beta1::RepositoryKey;
 
@@ -8,10 +7,8 @@ use crate::gen::lekko::backend::v1beta1::RepositoryKey;
 pub const APIKEY: &str = "apikey";
 
 // Contains all parameters needed to fetch a feature.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FeatureRequestParams {
-    // The API key that allows Lekko to identify the team that the feature is under.
-    pub api_key: MetadataValue<Ascii>,
     pub rk: RepositoryKey,
     pub namespace: String,
     pub feature: String,

@@ -42,7 +42,7 @@ impl Bootstrap {
                 Ok(nsr) => nsr,
                 Err(e) => return Err(e),
             };
-        println!("git-sync commit sha {:}", commit_sha);
+        println!("git-sync commit sha {commit_sha:}");
         Ok(GetRepositoryContentsResponse {
             commit_sha,
             namespaces,
@@ -56,30 +56,27 @@ impl Bootstrap {
             Ok(m) => m,
             Err(e) => {
                 return Err(Status::internal(format!(
-                    "path {:} does not exist: {:?}",
-                    git_dir_path, e
+                    "path {git_dir_path:} does not exist: {e:?}",
                 )))
             }
         };
 
         if !md.is_dir() {
             return Err(Status::internal(format!(
-                "path {:} is not a directory",
-                git_dir_path
+                "path {git_dir_path:} is not a directory",
             )));
         }
         let default_contents_path = self.repo_path.to_owned();
-        let default_root_yaml_path = format!("{:}/lekko.root.yaml", default_contents_path);
+        let default_root_yaml_path = format!("{default_contents_path:}/lekko.root.yaml");
         if Path::new(&default_root_yaml_path).exists() {
             self.contents_path = Some(default_contents_path);
             return Ok(());
         }
         let git_sync_contents_path = format!("{:}/contents", self.repo_path);
-        let git_sync_root_yaml_path = format!("{:}/lekko.root.yaml", git_sync_contents_path);
+        let git_sync_root_yaml_path = format!("{git_sync_contents_path:}/lekko.root.yaml");
         if !Path::new(&git_sync_root_yaml_path).exists() {
             return Err(Status::internal(format!(
-                "paths {:} or {:} do not exist",
-                default_root_yaml_path, git_sync_root_yaml_path,
+                "paths {default_root_yaml_path:} or {git_sync_root_yaml_path:} do not exist",
             )));
         }
         self.contents_path = Some(git_sync_contents_path);
@@ -97,15 +94,13 @@ impl Bootstrap {
                 Ok(docs) => docs[0].to_owned(),
                 Err(e) => {
                     return Err(Status::internal(format!(
-                        "failed to parse lekko yaml: {:?}",
-                        e
+                        "failed to parse lekko yaml: {e:?}",
                     )))
                 }
             },
             Err(e) => {
                 return Err(Status::internal(format!(
-                    "failed to read lekko yaml from {:?}: {:?}",
-                    lekko_root_path, e
+                    "failed to read lekko yaml from {lekko_root_path:?}: {e:?}",
                 )))
             }
         };
@@ -121,9 +116,8 @@ impl Bootstrap {
 
     fn load_namespace(&self, namespace: &str) -> Result<Namespace, Status> {
         let ns_path = format!(
-            "{}/{}/gen/proto",
+            "{}/{namespace}/gen/proto",
             self.contents_path.to_owned().unwrap(),
-            namespace
         );
         let paths = read_dir(ns_path).unwrap();
 
@@ -133,8 +127,7 @@ impl Bootstrap {
             let dir_entry = match path {
                 Err(e) => {
                     return Err(Status::invalid_argument(format!(
-                        "failed to read dir content: {:?}",
-                        e
+                        "failed to read dir content: {e:?}",
                     )))
                 }
                 Ok(p) => p,
@@ -142,17 +135,14 @@ impl Bootstrap {
             let ft = match dir_entry.file_type() {
                 Err(e) => {
                     return Err(Status::invalid_argument(format!(
-                        "failed to get file type {:?}",
-                        e
+                        "failed to get file type {e:?}",
                     )))
                 }
                 Ok(ft) => ft,
             };
             if ft.is_file() {
                 match read(dir_entry.path()) {
-                    Err(e) => {
-                        return Err(Status::internal(format!("failed to read path: {:?}", e)))
-                    }
+                    Err(e) => return Err(Status::internal(format!("failed to read path: {e:?}"))),
                     Ok(bytes) => {
                         let filename = dir_entry.file_name();
                         let filename = match filename.to_str() {
@@ -173,15 +163,14 @@ impl Bootstrap {
                             feature: match feature::v1beta1::Feature::decode(bytes.as_ref()) {
                                 Ok(d) => Some(d),
                                 Err(e) => {
-                                    println!("decode error! {:?}", e);
+                                    println!("decode error! {e:?}");
                                     return Err(Status::internal(format!(
-                                        "decode feature from git-sync: {:?}",
-                                        e
+                                        "decode feature from git-sync: {e:?}",
                                     )));
                                 }
                             },
                         });
-                        println!("{:} [{:?} bytes]: sha {:}", feature_name, bytes.len(), sha,);
+                        println!("{feature_name:} [{:?} bytes]: sha {sha:}", bytes.len());
                     }
                 }
             } else {
@@ -209,11 +198,11 @@ impl Bootstrap {
     fn git_commit_sha(&self) -> Result<String, Status> {
         let repo = match git_repository::open(Path::new(&self.repo_path)) {
             Ok(r) => r,
-            Err(e) => return Err(Status::internal(format!("failed to open repo: {:?}", e))),
+            Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
         };
         let commit_sha = match repo.head_id() {
             Ok(id) => id.to_string(),
-            Err(e) => return Err(Status::internal(format!("failed rev parse: {:?}", e))),
+            Err(e) => return Err(Status::internal(format!("failed rev parse: {e:?}"))),
         };
         Ok(commit_sha)
     }

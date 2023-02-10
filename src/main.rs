@@ -6,7 +6,7 @@ use sidecar::gen::lekko::backend::v1beta1::configuration_service_server::Configu
 use sidecar::gen::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 
 use sidecar::metrics::Metrics;
-use sidecar::service::Service;
+use sidecar::service::{Mode, Service};
 use sidecar::store::Store;
 use std::net::SocketAddr;
 use tonic::codegen::CompressionEncoding;
@@ -26,9 +26,12 @@ struct Args {
     /// Address to bind to on current host.
     bind_addr: String,
 
-    #[arg(short, long, default_value_t = false)]
-    /// Enabling proxy mode will run server-side evaluation instead of local evaluation.
-    proxy_mode: bool,
+    #[arg(value_enum, long, default_value_t)]
+    /// Mode can be one of:
+    /// default - initialize from a bootstrap, poll local state from remote and evaluate locally.
+    /// consistent - always evaluate using the latest value of a flag from remote.
+    /// static - operate only off of a bootstrap.
+    mode: Mode,
 
     #[arg(short, long)]
     /// Absolute path to the directory on disk that contains the .git folder.
@@ -39,13 +42,13 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
-    println!("args: {:?}", args);
+    println!("{args:?}");
     let addr = match args.bind_addr.parse::<SocketAddr>() {
-        Err(err) => panic!("parsing bind_addr failed: {:?}", err),
+        Err(err) => panic!("parsing bind_addr failed: {err:?}"),
         Ok(a) => a,
     };
     let lekko_addr = match args.lekko_addr.parse::<Uri>() {
-        Err(err) => panic!("parsing lekko_addr failed: {:?}", err),
+        Err(err) => panic!("parsing lekko_addr failed: {err:?}"),
         Ok(a) => a,
     };
     println!("listening on port: {:?}", addr.to_owned());
@@ -60,13 +63,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     );
     let bootstrap_data = match args.repo_path {
-        None => None,
+        None => {
+            if matches!(args.mode, Mode::Static) {
+                panic!("no bootstrap provided for sidecar configured to be static")
+            }
+            None
+        }
         Some(rp) => {
             let mut bootstrap = Bootstrap::new(rp);
             Some(
                 bootstrap
                     .load()
-                    .unwrap_or_else(|e| panic!("failed bootstrap load: {:?}", e)),
+                    .unwrap_or_else(|e| panic!("failed bootstrap load: {e:?}")),
             )
         }
     };
@@ -83,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let service = ConfigurationServiceServer::new(Service {
         config_client,
         store,
-        proxy_mode: args.proxy_mode,
+        mode: args.mode,
         metrics,
     })
     .send_compressed(CompressionEncoding::Gzip)
