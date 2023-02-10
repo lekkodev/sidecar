@@ -41,11 +41,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     println!("args: {:?}", args);
     let addr = match args.bind_addr.parse::<SocketAddr>() {
-        Err(err) => panic!("parsing bind_addr failed: {:?}", err),
+        Err(err) => panic!("parsing bind_addr failed: {err:?}"),
         Ok(a) => a,
     };
     let lekko_addr = match args.lekko_addr.parse::<Uri>() {
-        Err(err) => panic!("parsing lekko_addr failed: {:?}", err),
+        Err(err) => panic!("parsing lekko_addr failed: {err:?}"),
         Ok(a) => a,
     };
     println!("listening on port: {:?}", addr.to_owned());
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(
                 bootstrap
                     .load()
-                    .unwrap_or_else(|e| panic!("failed bootstrap load: {:?}", e)),
+                    .unwrap_or_else(|e| panic!("failed bootstrap load: {e:?}")),
             )
         }
     };

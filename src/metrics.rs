@@ -89,10 +89,7 @@ impl Metrics {
             event,
         });
         if let Err(e) = result {
-            println!(
-                "failed to send metrics event on mpsc channel {:?}",
-                e.to_string()
-            );
+            println!("failed to send metrics event on mpsc channel {e:?}",);
         }
     }
 
@@ -115,7 +112,7 @@ impl Metrics {
                 },
                 Some(result) = futures.next() => {
                     if let Err(e) = result {
-                        println!("error handling send flag evaluation future {:?}", e);
+                        println!("error handling send flag evaluation future {e:?}");
                     }
                 },
                 else => break,

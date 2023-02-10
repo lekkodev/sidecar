@@ -129,7 +129,7 @@ impl ConfigurationService for Service {
             self.proxy_headers(&mut proxy_req, request.metadata());
             let resp = self.config_client.clone().get_bool_value(proxy_req).await;
             if let Err(e) = resp {
-                println!("error in proxying {:?}", e);
+                println!("error in proxying {e:?}");
                 return Err(e);
             }
             return resp;
@@ -166,7 +166,7 @@ impl ConfigurationService for Service {
             self.proxy_headers(&mut proxy_req, request.metadata());
             let resp = self.config_client.clone().get_proto_value(proxy_req).await;
             if let Err(e) = resp {
-                println!("error in proxying {:?}", e);
+                println!("error in proxying {e:?}");
                 return Err(e);
             }
             return resp;
@@ -203,7 +203,7 @@ impl ConfigurationService for Service {
             self.proxy_headers(&mut proxy_req, request.metadata());
             let resp = self.config_client.clone().get_json_value(proxy_req).await;
             if let Err(e) = resp {
-                println!("error in proxying {:?}", e);
+                println!("error in proxying {e:?}");
                 return Err(e);
             }
             return resp;

@@ -87,18 +87,12 @@ async fn poll_loop(
             let version = data.repo_version.clone();
             let mut state_guard = state.write().unwrap();
             *state_guard = data;
-            println!(
-                "got register message, starting polling from version: {}",
-                version
-            );
+            println!("got register message, starting polling from version: {version}",);
             state_guard.conn_creds.clone()
         }
         Err(err) => {
             // TODO: handle panics better.
-            panic!(
-                "error encountered when initializing sidecar state: {:?}",
-                err
-            )
+            panic!("error encountered when initializing sidecar state: {err:?}",)
         }
     };
 
@@ -112,7 +106,7 @@ async fn poll_loop(
                 Ok(v) => v,
                 Err(err) => {
                     // TODO: exp backoff when we have errors
-                    println!("got an error when fetching version {:#?}", err);
+                    println!("got an error when fetching version {err:?}");
                     continue;
                 }
             };
@@ -125,10 +119,7 @@ async fn poll_loop(
             // release read lock to fetch data
         };
 
-        println!(
-            "polled for new version: {}, will fetch from remote",
-            new_version
-        );
+        println!("polled for new version: {new_version}, will fetch from remote",);
 
         match get_repo_contents_remote(
             dist_client.clone(),
@@ -144,14 +135,11 @@ async fn poll_loop(
                     state_guard.repo_version = res.commit_sha;
                     // drop state_guard
                 }
-                println!("updated to new version: {}", new_version);
+                println!("updated to new version: {new_version}");
             }
             Err(err) => {
                 // This is a problem, error loudly.
-                println!(
-                    "error encountered when fetching full repository state: {:?}",
-                    err
-                );
+                println!("error encountered when fetching full repository state: {err:?}",);
             }
         }
     }
@@ -209,12 +197,9 @@ async fn get_repo_version_remote(
         .map(|resp| resp.into_inner())
     {
         Ok(resp) => Ok(resp.commit_sha),
-        Err(error) => {
-            println!(
-                "error fetching repo version from distribution service {:?}",
-                error
-            );
-            Err(error)
+        Err(err) => {
+            println!("error fetching repo version from distribution service {err:?}",);
+            Err(err)
         }
     }
 }
@@ -231,7 +216,7 @@ async fn get_repo_contents_remote(
         .map(|resp| resp.into_inner())
     {
         Ok(resp) => {
-            println!("received contents for commit sha {}", resp.commit_sha,);
+            println!("received contents for commit sha {}", resp.commit_sha);
             Ok(resp)
         }
         Err(error) => {
@@ -251,7 +236,6 @@ impl Store {
         >,
         bootstrap_data: Option<GetRepositoryContentsResponse>,
     ) -> Self {
-        // TODO: worry about this join handle.
         let (tx, rx) = tokio::sync::oneshot::channel::<ConcurrentState>();
         let state = Arc::new(RwLock::new(match bootstrap_data {
             None => ConcurrentState {
@@ -273,6 +257,7 @@ impl Store {
                 },
             },
         }));
+        // TODO: worry about this join handle.
         tokio::spawn(poll_loop(rx, dist_client.clone(), state.clone()));
         Self {
             dist_client,
