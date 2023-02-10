@@ -27,7 +27,10 @@ struct Args {
     bind_addr: String,
 
     #[arg(value_enum, long, default_value_t)]
-    /// Enabling proxy mode will run server-side evaluation instead of local evaluation.
+    /// Mode can be one of:
+    /// default - initialize from a bootstrap, poll local state from remote and evaluate locally.
+    /// consistent - always evaluate using the latest value of a flag from remote.
+    /// static - operate only off of a bootstrap.
     mode: Mode,
 
     #[arg(short, long)]

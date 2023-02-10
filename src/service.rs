@@ -32,7 +32,7 @@ use crate::{
 // consistency.
 //
 // Static fetches from the bootstrap and always evaluates against those values. No
-// connection is made to a Lekko services.
+// connection is made to Lekko services.
 #[derive(clap::ValueEnum, Clone, Default, Debug)]
 pub enum Mode {
     #[default]

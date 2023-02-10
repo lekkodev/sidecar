@@ -219,12 +219,9 @@ async fn get_repo_contents_remote(
             println!("received contents for commit sha {}", resp.commit_sha);
             Ok(resp)
         }
-        Err(error) => {
-            println!(
-                "error fetching feature from distribution service {:?}",
-                error
-            );
-            Err(error)
+        Err(err) => {
+            println!("error fetching feature from distribution service {err:?}",);
+            Err(err)
         }
     }
 }
@@ -294,14 +291,13 @@ impl Store {
             .await
         {
             Ok(resp) => resp.into_inner().session_key,
-            Err(error) => {
+            Err(err) => {
                 // If we have an error registering, we probably can't reach lekko. If we operate off of a bootstrap
                 // we can continue to function off of that information. Unfortunately, we won't get updates. More
                 // work will have to be done here to recover on a loop. For now, we return an error such that we expect
                 // the SDK or client to retry the registration.
                 return Err(tonic::Status::resource_exhausted(format!(
-                    "error when registering with lekko {:?}",
-                    error
+                    "error when registering with lekko {err:?}",
                 )));
             }
         };
