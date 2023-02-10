@@ -42,7 +42,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
-    println!("args: {:?}", args);
+    println!("{args:?}");
     let addr = match args.bind_addr.parse::<SocketAddr>() {
         Err(err) => panic!("parsing bind_addr failed: {err:?}"),
         Ok(a) => a,
