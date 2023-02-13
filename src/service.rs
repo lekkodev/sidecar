@@ -2,8 +2,7 @@ use std::collections::HashMap;
 
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
-use prost::Message;
-use prost_types::value::Kind;
+use prost_types::{value::Kind, Any};
 use tonic::{
     body::BoxBody,
     metadata::{Ascii, MetadataMap, MetadataValue},
@@ -66,15 +65,12 @@ impl Service {
         }
     }
 
-    fn get_value_local<T>(
+    fn get_value_local(
         &self,
         feature: FeatureRequestParams,
         context: &HashMap<String, Value>,
         api_key: MetadataValue<Ascii>,
-    ) -> Result<T, tonic::Status>
-    where
-        T: Message + Default,
-    {
+    ) -> Result<Any, tonic::Status> {
         let feature_data = self
             .store
             .get_feature_local(feature.clone())
@@ -87,7 +83,7 @@ impl Service {
             &eval_result.1,
             &api_key,
         );
-        types::from_any(&eval_result.0).map_err(|e| tonic::Status::internal(e.to_string()))
+        Ok(eval_result.0)
     }
 }
 
@@ -118,6 +114,7 @@ impl ConfigurationService for Service {
         &self,
         request: Request<GetBoolValueRequest>,
     ) -> Result<tonic::Response<GetBoolValueResponse>, tonic::Status> {
+        println!("Got a request for GetBoolValue");
         let apikey = request
             .metadata()
             .get(APIKEY)
@@ -136,17 +133,19 @@ impl ConfigurationService for Service {
         }
 
         let inner = request.into_inner();
-        Ok(Response::new(GetBoolValueResponse {
-            value: self.get_value_local(
-                FeatureRequestParams {
-                    rk: inner.repo_key.clone().unwrap(),
-                    namespace: inner.namespace.clone(),
-                    feature: inner.key.clone(),
-                },
-                &inner.context,
-                apikey,
-            )?,
-        }))
+        let bool_result = types::from_any::<bool>(&self.get_value_local(
+            FeatureRequestParams {
+                rk: inner.repo_key.clone().unwrap(),
+                namespace: inner.namespace.clone(),
+                feature: inner.key.clone(),
+            },
+            &inner.context,
+            apikey,
+        )?);
+        match bool_result {
+            Ok(b) => Ok(Response::new(GetBoolValueResponse { value: b })),
+            Err(e) => Err(tonic::Status::internal(e.to_string())),
+        }
     }
 
     async fn get_proto_value(
@@ -171,26 +170,24 @@ impl ConfigurationService for Service {
             }
             return resp;
         }
-
         let inner = request.into_inner();
-        Ok(Response::new(GetProtoValueResponse {
-            value: Some(self.get_value_local(
-                FeatureRequestParams {
-                    rk: inner.repo_key.clone().unwrap(),
-                    namespace: inner.namespace.clone(),
-                    feature: inner.key.clone(),
-                },
-                &inner.context,
-                apikey,
-            )?),
-        }))
+        let any = self.get_value_local(
+            FeatureRequestParams {
+                rk: inner.repo_key.clone().unwrap(),
+                namespace: inner.namespace.clone(),
+                feature: inner.key.clone(),
+            },
+            &inner.context,
+            apikey,
+        )?;
+        Ok(Response::new(GetProtoValueResponse { value: Some(any) }))
     }
 
     async fn get_json_value(
         &self,
         request: Request<GetJsonValueRequest>,
     ) -> Result<tonic::Response<GetJsonValueResponse>, tonic::Status> {
-        println!("Got a request for GetJSONValue, proxying");
+        println!("Got a request for GetJSONValue");
 
         let apikey = request
             .metadata()
@@ -210,7 +207,7 @@ impl ConfigurationService for Service {
         }
 
         let inner = request.into_inner();
-        let struct_value = self.get_value_local::<prost_types::Value>(
+        let json_result = types::from_any::<prost_types::Value>(&self.get_value_local(
             FeatureRequestParams {
                 rk: inner.repo_key.clone().unwrap(),
                 namespace: inner.namespace.clone(),
@@ -218,13 +215,15 @@ impl ConfigurationService for Service {
             },
             &inner.context,
             apikey,
-        )?;
-
-        Ok(Response::new(GetJsonValueResponse {
-            value: serde_json::to_vec(&ValueWrapper(&struct_value)).map_err(|e| {
-                Status::internal("failure serializing json ".to_owned() + &e.to_string())
-            })?,
-        }))
+        )?);
+        match json_result {
+            Ok(v) => Ok(Response::new(GetJsonValueResponse {
+                value: serde_json::to_vec(&ValueWrapper(&v)).map_err(|e| {
+                    Status::internal("failure serializing json ".to_owned() + &e.to_string())
+                })?,
+            })),
+            Err(e) => Err(tonic::Status::internal(e.to_string())),
+        }
     }
 }
 
