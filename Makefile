@@ -108,3 +108,6 @@ dockerbuild:: dockerbuild$(1)
 endef
 
 $(foreach dockerbin,$(sort $(DOCKER_BINS)),$(eval $(call dockerbinfunc,$(dockerbin))))
+
+release:
+	./release.sh
