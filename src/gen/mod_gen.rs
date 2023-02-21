@@ -7,6 +7,13 @@ pub mod lekko {
             // @@protoc_insertion_point(lekko.backend.v1beta1)
         }
     }
+    pub mod bff {
+        // @@protoc_insertion_point(attribute:lekko.bff.v1beta1)
+        pub mod v1beta1 {
+            include!("lekko.bff.v1beta1.rs");
+            // @@protoc_insertion_point(lekko.bff.v1beta1)
+        }
+    }
     pub mod feature {
         // @@protoc_insertion_point(attribute:lekko.feature.v1beta1)
         pub mod v1beta1 {

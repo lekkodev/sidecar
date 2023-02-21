@@ -14,8 +14,8 @@ use crate::{
     gen::lekko::backend::v1beta1::{
         configuration_service_client::ConfigurationServiceClient,
         configuration_service_server::ConfigurationService, GetBoolValueRequest,
-        GetBoolValueResponse, GetJsonValueRequest, GetJsonValueResponse, GetProtoValueRequest,
-        GetProtoValueResponse, RegisterRequest, RegisterResponse, Value,
+        GetBoolValueResponse, GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest, GetJsonValueResponse, GetProtoValueRequest,
+        GetProtoValueResponse, RegisterRequest, RegisterResponse, Value, GetFloatValueRequest, GetFloatValueResponse, GetStringValueRequest, GetStringValueResponse,
     },
     metrics::Metrics,
     store::Store,
@@ -144,6 +144,120 @@ impl ConfigurationService for Service {
         )?);
         match bool_result {
             Ok(b) => Ok(Response::new(GetBoolValueResponse { value: b })),
+            Err(e) => Err(tonic::Status::internal(e.to_string())),
+        }
+    }
+
+    async fn get_int_value(
+        &self,
+        request: Request<GetIntValueRequest>,
+    ) -> Result<tonic::Response<GetIntValueResponse>, tonic::Status> {
+        println!("Got a request for GetIntValue");
+        let apikey = request
+            .metadata()
+            .get(APIKEY)
+            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
+            .to_owned();
+
+        if matches!(self.mode, Mode::Consistent) {
+            let mut proxy_req = Request::new(request.get_ref().clone());
+            self.proxy_headers(&mut proxy_req, request.metadata());
+            let resp = self.config_client.clone().get_int_value(proxy_req).await;
+            if let Err(e) = resp {
+                println!("error in proxying {e:?}");
+                return Err(e);
+            }
+            return resp;
+        }
+
+        let inner = request.into_inner();
+        let int_result = types::from_any::<i64>(&self.get_value_local(
+            FeatureRequestParams {
+                rk: inner.repo_key.clone().unwrap(),
+                namespace: inner.namespace.clone(),
+                feature: inner.key.clone(),
+            },
+            &inner.context,
+            apikey,
+        )?);
+        match int_result {
+            Ok(i) => Ok(Response::new(GetIntValueResponse { value: i })),
+            Err(e) => Err(tonic::Status::internal(e.to_string())),
+        }
+    }
+
+    async fn get_float_value(
+        &self,
+        request: Request<GetFloatValueRequest>,
+    ) -> Result<tonic::Response<GetFloatValueResponse>, tonic::Status> {
+        println!("Got a request for GetFloatValue");
+        let apikey = request
+            .metadata()
+            .get(APIKEY)
+            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
+            .to_owned();
+
+        if matches!(self.mode, Mode::Consistent) {
+            let mut proxy_req = Request::new(request.get_ref().clone());
+            self.proxy_headers(&mut proxy_req, request.metadata());
+            let resp = self.config_client.clone().get_float_value(proxy_req).await;
+            if let Err(e) = resp {
+                println!("error in proxying {e:?}");
+                return Err(e);
+            }
+            return resp;
+        }
+
+        let inner = request.into_inner();
+        let float_result = types::from_any::<f64>(&self.get_value_local(
+            FeatureRequestParams {
+                rk: inner.repo_key.clone().unwrap(),
+                namespace: inner.namespace.clone(),
+                feature: inner.key.clone(),
+            },
+            &inner.context,
+            apikey,
+        )?);
+        match float_result {
+            Ok(f) => Ok(Response::new(GetFloatValueResponse { value: f })),
+            Err(e) => Err(tonic::Status::internal(e.to_string())),
+        }
+    }
+
+    async fn get_string_value(
+        &self,
+        request: Request<GetStringValueRequest>,
+    ) -> Result<tonic::Response<GetStringValueResponse>, tonic::Status> {
+        println!("Got a request for GetStringValue");
+        let apikey = request
+            .metadata()
+            .get(APIKEY)
+            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
+            .to_owned();
+
+        if matches!(self.mode, Mode::Consistent) {
+            let mut proxy_req = Request::new(request.get_ref().clone());
+            self.proxy_headers(&mut proxy_req, request.metadata());
+            let resp = self.config_client.clone().get_string_value(proxy_req).await;
+            if let Err(e) = resp {
+                println!("error in proxying {e:?}");
+                return Err(e);
+            }
+            return resp;
+        }
+
+        let inner = request.into_inner();
+        let string_result = types::from_any::<String>(&self.get_value_local(
+            FeatureRequestParams {
+                rk: inner.repo_key.clone().unwrap(),
+                namespace: inner.namespace.clone(),
+                feature: inner.key.clone(),
+            },
+            &inner.context,
+            apikey,
+        )?);
+        match string_result {
+            Ok(s) => Ok(Response::new(GetStringValueResponse { value: s })),
             Err(e) => Err(tonic::Status::internal(e.to_string())),
         }
     }

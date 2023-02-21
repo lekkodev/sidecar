@@ -87,6 +87,63 @@ pub mod configuration_service_client {
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
+        pub async fn get_int_value(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetIntValueRequest>,
+        ) -> Result<tonic::Response<super::GetIntValueResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.backend.v1beta1.ConfigurationService/GetIntValue",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
+        pub async fn get_float_value(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetFloatValueRequest>,
+        ) -> Result<tonic::Response<super::GetFloatValueResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.backend.v1beta1.ConfigurationService/GetFloatValue",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
+        pub async fn get_string_value(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetStringValueRequest>,
+        ) -> Result<tonic::Response<super::GetStringValueResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.backend.v1beta1.ConfigurationService/GetStringValue",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
         pub async fn get_proto_value(
             &mut self,
             request: impl tonic::IntoRequest<super::GetProtoValueRequest>,
@@ -157,6 +214,18 @@ pub mod configuration_service_server {
             &self,
             request: tonic::Request<super::GetBoolValueRequest>,
         ) -> Result<tonic::Response<super::GetBoolValueResponse>, tonic::Status>;
+        async fn get_int_value(
+            &self,
+            request: tonic::Request<super::GetIntValueRequest>,
+        ) -> Result<tonic::Response<super::GetIntValueResponse>, tonic::Status>;
+        async fn get_float_value(
+            &self,
+            request: tonic::Request<super::GetFloatValueRequest>,
+        ) -> Result<tonic::Response<super::GetFloatValueResponse>, tonic::Status>;
+        async fn get_string_value(
+            &self,
+            request: tonic::Request<super::GetStringValueRequest>,
+        ) -> Result<tonic::Response<super::GetStringValueResponse>, tonic::Status>;
         async fn get_proto_value(
             &self,
             request: tonic::Request<super::GetProtoValueRequest>,
@@ -259,6 +328,126 @@ pub mod configuration_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = GetBoolValueSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.backend.v1beta1.ConfigurationService/GetIntValue" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetIntValueSvc<T: ConfigurationService>(pub Arc<T>);
+                    impl<
+                        T: ConfigurationService,
+                    > tonic::server::UnaryService<super::GetIntValueRequest>
+                    for GetIntValueSvc<T> {
+                        type Response = super::GetIntValueResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetIntValueRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).get_int_value(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = GetIntValueSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.backend.v1beta1.ConfigurationService/GetFloatValue" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetFloatValueSvc<T: ConfigurationService>(pub Arc<T>);
+                    impl<
+                        T: ConfigurationService,
+                    > tonic::server::UnaryService<super::GetFloatValueRequest>
+                    for GetFloatValueSvc<T> {
+                        type Response = super::GetFloatValueResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetFloatValueRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).get_float_value(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = GetFloatValueSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.backend.v1beta1.ConfigurationService/GetStringValue" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetStringValueSvc<T: ConfigurationService>(pub Arc<T>);
+                    impl<
+                        T: ConfigurationService,
+                    > tonic::server::UnaryService<super::GetStringValueRequest>
+                    for GetStringValueSvc<T> {
+                        type Response = super::GetStringValueResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetStringValueRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).get_string_value(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = GetStringValueSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
