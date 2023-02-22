@@ -117,7 +117,11 @@ impl ConfigurationService for Service {
         &self,
         _request: Request<DeregisterRequest>,
     ) -> Result<tonic::Response<DeregisterResponse>, tonic::Status> {
-        self.store.deregister().await?;
+        // Only proxy register in the case of default. We still continue here
+        // to consume the oneshot even in static or consistent mode.
+        if matches!(self.mode, Mode::Default) {
+            self.store.deregister().await?;
+        }
         // There is a potential race condition here of if we got SIGTERM,
         // we never return this error message because the oneshot has released our
         // graceful shutdown handler and we exit too fast. This is unlikely, and worst
