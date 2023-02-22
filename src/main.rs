@@ -9,6 +9,8 @@ use sidecar::metrics::Metrics;
 use sidecar::service::{Mode, Service};
 use sidecar::store::Store;
 use std::net::SocketAddr;
+use std::sync::Mutex;
+use tokio::signal::unix::SignalKind;
 use tonic::codegen::CompressionEncoding;
 use tonic::transport::{Server, Uri};
 
@@ -62,6 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .enable_http2()
             .build(),
     );
+
     let bootstrap_data = match args.repo_path {
         None => {
             if matches!(args.mode, Mode::Static) {
@@ -86,9 +89,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dist_client = DistributionServiceClient::with_origin(http_client, lekko_addr)
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
+
+    // Have a oneshot for deregister to release shutdown in case of a SIGTERM. This behavior is intended
+    // to keep the sidecar up longer than its client process.
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
     let store = Store::new(dist_client.clone(), bootstrap_data);
     let metrics = Metrics::new(dist_client);
     let service = ConfigurationServiceServer::new(Service {
+        shutdown_tx: Mutex::new(Some(shutdown_tx)),
         config_client,
         store,
         mode: args.mode,
@@ -97,7 +106,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .send_compressed(CompressionEncoding::Gzip)
     .accept_compressed(CompressionEncoding::Gzip);
 
-    Server::builder().add_service(service).serve(addr).await?;
+    Server::builder()
+        .add_service(service)
+        .serve_with_shutdown(addr, async move {
+            tokio::signal::unix::signal(SignalKind::terminate())
+                .unwrap()
+                .recv()
+                .await;
+            // wait on signal from deregister
+            println!("got sigterm, waiting for deregister before gracefully shutting down");
+            match shutdown_rx.await {
+                Ok(()) => {}
+                Err(error) => {
+                    println!("error when shutting down: {error:?}")
+                }
+            };
+            println!("got deregister, gracefully shutting down");
+            // shutdown metrics
+        })
+        .await?;
 
     Ok(())
 }

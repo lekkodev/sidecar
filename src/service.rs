@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::DerefMut, sync::Mutex};
 
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
@@ -13,9 +13,11 @@ use crate::{
     evaluate::evaluator::evaluate,
     gen::lekko::backend::v1beta1::{
         configuration_service_client::ConfigurationServiceClient,
-        configuration_service_server::ConfigurationService, GetBoolValueRequest,
-        GetBoolValueResponse, GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest, GetJsonValueResponse, GetProtoValueRequest,
-        GetProtoValueResponse, RegisterRequest, RegisterResponse, Value, GetFloatValueRequest, GetFloatValueResponse, GetStringValueRequest, GetStringValueResponse,
+        configuration_service_server::ConfigurationService, DeregisterRequest, DeregisterResponse,
+        GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest, GetFloatValueResponse,
+        GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest, GetJsonValueResponse,
+        GetProtoValueRequest, GetProtoValueResponse, GetStringValueRequest, GetStringValueResponse,
+        RegisterRequest, RegisterResponse, Value,
     },
     metrics::Metrics,
     store::Store,
@@ -48,6 +50,7 @@ pub struct Service {
     pub store: Store,
     pub mode: Mode,
     pub metrics: Metrics,
+    pub shutdown_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 trait SharedRequest {
@@ -108,6 +111,30 @@ impl ConfigurationService for Service {
             .register(request.repo_key.unwrap(), &request.namespace_list, apikey)
             .await?;
         Ok(Response::new(RegisterResponse::default()))
+    }
+
+    async fn deregister(
+        &self,
+        _request: Request<DeregisterRequest>,
+    ) -> Result<tonic::Response<DeregisterResponse>, tonic::Status> {
+        self.store.deregister().await?;
+        // There is a potential race condition here of if we got SIGTERM,
+        // we never return this error message because the oneshot has released our
+        // graceful shutdown handler and we exit too fast. This is unlikely, and worst
+        // case results in an error message for the caller.
+
+        let mut guard = self.shutdown_tx.lock().unwrap();
+        match guard.deref_mut().take() {
+            Some(sender) => sender
+                .send(())
+                .map_err(|_| tonic::Status::internal("shutdown already initiated"))?,
+            None => {
+                return Err(tonic::Status::already_exists(
+                    "deregister has already been called on this sidecar, ignoring deregister RPC",
+                ))
+            }
+        }
+        Ok(Response::new(DeregisterResponse::default()))
     }
 
     async fn get_bool_value(
