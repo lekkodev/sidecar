@@ -82,11 +82,6 @@ impl Service {
             .store
             .get_feature_local(feature.clone())
             .ok_or_else(|| Status::invalid_argument("feature not found"))?;
-        print!(
-            "feature {:?} has type {:?}\n",
-            feature.feature,
-            feature_data.feature.r#type()
-        );
         if feature_data.feature.r#type() != FeatureType::Unspecified && // backwards compatibility
             feature_data.feature.r#type() != requested_type
         {
