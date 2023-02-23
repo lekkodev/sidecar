@@ -11,11 +11,17 @@ use tonic::{
 
 use crate::{
     evaluate::evaluator::evaluate,
-    gen::lekko::backend::v1beta1::{
-        configuration_service_client::ConfigurationServiceClient,
-        configuration_service_server::ConfigurationService, GetBoolValueRequest,
-        GetBoolValueResponse, GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest, GetJsonValueResponse, GetProtoValueRequest,
-        GetProtoValueResponse, RegisterRequest, RegisterResponse, Value, GetFloatValueRequest, GetFloatValueResponse, GetStringValueRequest, GetStringValueResponse,
+    gen::lekko::{
+        backend::v1beta1::{
+            configuration_service_client::ConfigurationServiceClient,
+            configuration_service_server::ConfigurationService, DeregisterRequest,
+            DeregisterResponse, GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest,
+            GetFloatValueResponse, GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest,
+            GetJsonValueResponse, GetProtoValueRequest, GetProtoValueResponse,
+            GetStringValueRequest, GetStringValueResponse, RegisterRequest, RegisterResponse,
+            Value,
+        },
+        feature::v1beta1::FeatureType,
     },
     metrics::Metrics,
     store::Store,
@@ -70,11 +76,25 @@ impl Service {
         feature: FeatureRequestParams,
         context: &HashMap<String, Value>,
         api_key: MetadataValue<Ascii>,
+        requested_type: FeatureType,
     ) -> Result<Any, tonic::Status> {
         let feature_data = self
             .store
             .get_feature_local(feature.clone())
             .ok_or_else(|| Status::invalid_argument("feature not found"))?;
+        print!(
+            "feature {:?} has type {:?}\n",
+            feature.feature,
+            feature_data.feature.r#type()
+        );
+        if feature_data.feature.r#type() != FeatureType::Unspecified && // backwards compatibility
+            feature_data.feature.r#type() != requested_type
+        {
+            return Err(tonic::Status::invalid_argument(format!(
+                "type mismatch: requested feature is not of type {:?}",
+                requested_type.as_str_name()
+            )));
+        }
         let eval_result = evaluate(&feature_data.feature, context)?;
         self.metrics.track_flag_evaluation(
             &feature,
@@ -110,6 +130,13 @@ impl ConfigurationService for Service {
         Ok(Response::new(RegisterResponse::default()))
     }
 
+    async fn deregister(
+        &self,
+        _request: Request<DeregisterRequest>,
+    ) -> Result<tonic::Response<DeregisterResponse>, tonic::Status> {
+        Err(tonic::Status::unimplemented("method not implemented"))
+    }
+
     async fn get_bool_value(
         &self,
         request: Request<GetBoolValueRequest>,
@@ -141,6 +168,7 @@ impl ConfigurationService for Service {
             },
             &inner.context,
             apikey,
+            FeatureType::Bool,
         )?);
         match bool_result {
             Ok(b) => Ok(Response::new(GetBoolValueResponse { value: b })),
@@ -179,6 +207,7 @@ impl ConfigurationService for Service {
             },
             &inner.context,
             apikey,
+            FeatureType::Int,
         )?);
         match int_result {
             Ok(i) => Ok(Response::new(GetIntValueResponse { value: i })),
@@ -217,6 +246,7 @@ impl ConfigurationService for Service {
             },
             &inner.context,
             apikey,
+            FeatureType::Float,
         )?);
         match float_result {
             Ok(f) => Ok(Response::new(GetFloatValueResponse { value: f })),
@@ -255,6 +285,7 @@ impl ConfigurationService for Service {
             },
             &inner.context,
             apikey,
+            FeatureType::String,
         )?);
         match string_result {
             Ok(s) => Ok(Response::new(GetStringValueResponse { value: s })),
@@ -293,6 +324,7 @@ impl ConfigurationService for Service {
             },
             &inner.context,
             apikey,
+            FeatureType::Proto,
         )?;
         Ok(Response::new(GetProtoValueResponse { value: Some(any) }))
     }
@@ -329,6 +361,7 @@ impl ConfigurationService for Service {
             },
             &inner.context,
             apikey,
+            FeatureType::Json,
         )?);
         match json_result {
             Ok(v) => Ok(Response::new(GetJsonValueResponse {
