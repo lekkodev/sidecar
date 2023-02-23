@@ -201,6 +201,25 @@ pub mod configuration_service_client {
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
+        pub async fn deregister(
+            &mut self,
+            request: impl tonic::IntoRequest<super::DeregisterRequest>,
+        ) -> Result<tonic::Response<super::DeregisterResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.backend.v1beta1.ConfigurationService/Deregister",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -238,6 +257,10 @@ pub mod configuration_service_server {
             &self,
             request: tonic::Request<super::RegisterRequest>,
         ) -> Result<tonic::Response<super::RegisterResponse>, tonic::Status>;
+        async fn deregister(
+            &self,
+            request: tonic::Request<super::DeregisterRequest>,
+        ) -> Result<tonic::Response<super::DeregisterResponse>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct ConfigurationServiceServer<T: ConfigurationService> {
@@ -577,6 +600,44 @@ pub mod configuration_service_server {
                     };
                     Box::pin(fut)
                 }
+                "/lekko.backend.v1beta1.ConfigurationService/Deregister" => {
+                    #[allow(non_camel_case_types)]
+                    struct DeregisterSvc<T: ConfigurationService>(pub Arc<T>);
+                    impl<
+                        T: ConfigurationService,
+                    > tonic::server::UnaryService<super::DeregisterRequest>
+                    for DeregisterSvc<T> {
+                        type Response = super::DeregisterResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::DeregisterRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move { (*inner).deregister(request).await };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = DeregisterSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
                 _ => {
                     Box::pin(async move {
                         Ok(
@@ -771,6 +832,25 @@ pub mod distribution_service_client {
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
+        pub async fn deregister_client(
+            &mut self,
+            request: impl tonic::IntoRequest<super::DeregisterClientRequest>,
+        ) -> Result<tonic::Response<super::DeregisterClientResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.backend.v1beta1.DistributionService/DeregisterClient",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -802,6 +882,10 @@ pub mod distribution_service_server {
             &self,
             request: tonic::Request<super::RegisterClientRequest>,
         ) -> Result<tonic::Response<super::RegisterClientResponse>, tonic::Status>;
+        async fn deregister_client(
+            &self,
+            request: tonic::Request<super::DeregisterClientRequest>,
+        ) -> Result<tonic::Response<super::DeregisterClientResponse>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct DistributionServiceServer<T: DistributionService> {
@@ -1016,6 +1100,46 @@ pub mod distribution_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = RegisterClientSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.backend.v1beta1.DistributionService/DeregisterClient" => {
+                    #[allow(non_camel_case_types)]
+                    struct DeregisterClientSvc<T: DistributionService>(pub Arc<T>);
+                    impl<
+                        T: DistributionService,
+                    > tonic::server::UnaryService<super::DeregisterClientRequest>
+                    for DeregisterClientSvc<T> {
+                        type Response = super::DeregisterClientResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::DeregisterClientRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).deregister_client(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = DeregisterClientSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
