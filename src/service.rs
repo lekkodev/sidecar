@@ -120,7 +120,12 @@ impl ConfigurationService for Service {
         // Only proxy register in the case of default. We still continue here
         // to consume the oneshot even in static or consistent mode.
         if matches!(self.mode, Mode::Default) {
-            self.store.deregister().await?;
+            match self.store.deregister().await {
+                Ok(_) => {}
+                Err(err) => {
+                    println!("error encountered when proxying deregistration. continuing with shutdown {err:?}")
+                }
+            }
         }
         // There is a potential race condition here of if we got SIGTERM,
         // we never return this error message because the oneshot has released our
