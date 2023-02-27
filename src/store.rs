@@ -8,9 +8,9 @@ use std::{
 use crate::{
     gen::lekko::{
         backend::v1beta1::{
-            distribution_service_client::DistributionServiceClient, GetRepositoryContentsRequest,
-            GetRepositoryContentsResponse, GetRepositoryVersionRequest, Namespace,
-            RegisterClientRequest, RepositoryKey,
+            distribution_service_client::DistributionServiceClient, DeregisterClientRequest,
+            GetRepositoryContentsRequest, GetRepositoryContentsResponse,
+            GetRepositoryVersionRequest, Namespace, RegisterClientRequest, RepositoryKey,
         },
         feature::v1beta1::Feature,
     },
@@ -261,6 +261,23 @@ impl Store {
             state,
             initialize_tx: Mutex::new(Some(tx)),
         }
+    }
+
+    pub async fn deregister(&self) -> Result<(), tonic::Status> {
+        // TODO: block connections and/or figure out multi-tenant sidecar with a semaphore for our state machine.
+        let ConnectionCredentials {
+            session_key,
+            api_key,
+            ..
+        } = self.state.read().unwrap().conn_creds.clone();
+        self.dist_client
+            .clone()
+            .deregister_client(add_api_key(
+                DeregisterClientRequest { session_key },
+                api_key,
+            ))
+            .await
+            .map(|_| ())
     }
 
     pub async fn register(

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::DerefMut, sync::Mutex};
 
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
@@ -54,6 +54,7 @@ pub struct Service {
     pub store: Store,
     pub mode: Mode,
     pub metrics: Metrics,
+    pub shutdown_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 trait SharedRequest {
@@ -129,7 +130,33 @@ impl ConfigurationService for Service {
         &self,
         _request: Request<DeregisterRequest>,
     ) -> Result<tonic::Response<DeregisterResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented("method not implemented"))
+        // Only proxy register in the case of default. We still continue here
+        // to consume the oneshot even in static or consistent mode.
+        if matches!(self.mode, Mode::Default) {
+            match self.store.deregister().await {
+                Ok(_) => {}
+                Err(err) => {
+                    println!("error encountered when proxying deregistration. continuing with shutdown {err:?}")
+                }
+            }
+        }
+        // There is a potential race condition here of if we got SIGTERM,
+        // we never return this error message because the oneshot has released our
+        // graceful shutdown handler and we exit too fast. This is unlikely, and worst
+        // case results in an error message for the caller.
+
+        let mut guard = self.shutdown_tx.lock().unwrap();
+        match guard.deref_mut().take() {
+            Some(sender) => sender
+                .send(())
+                .map_err(|_| tonic::Status::internal("shutdown already initiated"))?,
+            None => {
+                return Err(tonic::Status::already_exists(
+                    "deregister has already been called on this sidecar, ignoring deregister RPC",
+                ))
+            }
+        }
+        Ok(Response::new(DeregisterResponse::default()))
     }
 
     async fn get_bool_value(
