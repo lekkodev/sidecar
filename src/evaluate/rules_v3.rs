@@ -11,7 +11,7 @@ use crate::gen::lekko::{
     rules::v1beta3::{
         rule::Rule::{Atom, BoolConst, LogicalExpression, Not},
         ComparisonOperator as CmpOp,
-        LogicalOperator::{And, Or, self},
+        LogicalOperator::{self, And, Or},
         Rule,
     },
 };
@@ -30,9 +30,11 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
         // Recursive case
         Not(not_rule) => Ok(!check_rule(not_rule.as_ref(), context)?),
         // Recursive case
-        LogicalExpression(le) => {
-            Ok(check_rules(le.rules.as_ref(), &le.logical_operator(), context)?)
-        }
+        LogicalExpression(le) => Ok(check_rules(
+            le.rules.as_ref(),
+            &le.logical_operator(),
+            context,
+        )?),
         // Base case
         Atom(a) => {
             let ctx_key = &a.context_key;
@@ -82,20 +84,21 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
     }
 }
 
-pub fn check_rules(rules: &Vec<Rule>, operator: &LogicalOperator, context: &HashMap<String, LekkoValue>) -> Result<bool, Status> {
+pub fn check_rules(
+    rules: &Vec<Rule>,
+    operator: &LogicalOperator,
+    context: &HashMap<String, LekkoValue>,
+) -> Result<bool, Status> {
     if rules.len() == 0 {
         return Err(Status::internal("no rules found in logical expression"));
     }
-    let result: Result<Vec<bool>, Status> = rules.iter().map(|rule| {
-        check_rule(rule, context)
-    }).collect();
+    let result: Result<Vec<bool>, Status> =
+        rules.iter().map(|rule| check_rule(rule, context)).collect();
     match result {
-        Ok(bools) => {
-            match operator {
-                LogicalOperator::Unspecified => Err(Status::internal("unknown logical operator")),
-                And => Ok(bools.iter().all(|b| b.to_owned())),
-                Or => Ok(bools.iter().any(|b| b.to_owned())),
-            }
+        Ok(bools) => match operator {
+            LogicalOperator::Unspecified => Err(Status::internal("unknown logical operator")),
+            And => Ok(bools.iter().all(|b| b.to_owned())),
+            Or => Ok(bools.iter().any(|b| b.to_owned())),
         },
         Err(e) => Err(e),
     }
