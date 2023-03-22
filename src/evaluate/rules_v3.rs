@@ -8,10 +8,10 @@ use tonic::Status;
 
 use crate::gen::lekko::{
     backend::{self, v1beta1::value::Kind as LekkoKind, v1beta1::Value as LekkoValue},
-    rules::v1beta2::{
+    rules::v1beta3::{
         rule::Rule::{Atom, BoolConst, LogicalExpression, Not},
         ComparisonOperator as CmpOp,
-        LogicalOperator::{And, Or},
+        LogicalOperator::{And, Or, self},
         Rule,
     },
 };
@@ -31,25 +31,7 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
         Not(not_rule) => Ok(!check_rule(not_rule.as_ref(), context)?),
         // Recursive case
         LogicalExpression(le) => {
-            let first = check_rule(
-                le.first_rule
-                    .as_ref()
-                    .ok_or_else(|| Status::internal("empty first rule"))?
-                    .as_ref(),
-                context,
-            )?;
-            let second = check_rule(
-                le.second_rule
-                    .as_ref()
-                    .ok_or_else(|| Status::internal("empty second rule"))?
-                    .as_ref(),
-                context,
-            )?;
-            match le.logical_operator() {
-                And => Ok(first && second),
-                Or => Ok(first || second),
-                _ => Err(Status::internal("unknown logical operator")),
-            }
+            Ok(check_rules(le.rules.as_ref(), &le.logical_operator(), context)?)
         }
         // Base case
         Atom(a) => {
@@ -97,6 +79,25 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
                 _ => Err(Status::internal("unknown comparison operator")),
             }
         }
+    }
+}
+
+pub fn check_rules(rules: &Vec<Rule>, operator: &LogicalOperator, context: &HashMap<String, LekkoValue>) -> Result<bool, Status> {
+    if rules.len() == 0 {
+        return Err(Status::internal("no rules found in logical expression"));
+    }
+    let result: Result<Vec<bool>, Status> = rules.iter().map(|rule| {
+        check_rule(rule, context)
+    }).collect();
+    match result {
+        Ok(bools) => {
+            match operator {
+                LogicalOperator::Unspecified => Err(Status::internal("unknown logical operator")),
+                And => Ok(bools.iter().all(|b| b.to_owned())),
+                Or => Ok(bools.iter().any(|b| b.to_owned())),
+            }
+        },
+        Err(e) => Err(e),
     }
 }
 
