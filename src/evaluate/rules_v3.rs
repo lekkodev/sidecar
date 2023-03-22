@@ -89,7 +89,7 @@ pub fn check_rules(
     operator: &LogicalOperator,
     context: &HashMap<String, LekkoValue>,
 ) -> Result<bool, Status> {
-    if rules.len() == 0 {
+    if rules.is_empty() {
         return Err(Status::internal("no rules found in logical expression"));
     }
     let result: Result<Vec<bool>, Status> =
