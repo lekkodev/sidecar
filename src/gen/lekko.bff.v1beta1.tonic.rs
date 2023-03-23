@@ -1130,6 +1130,44 @@ pub mod bff_service_client {
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
+        pub async fn save_starlark(
+            &mut self,
+            request: impl tonic::IntoRequest<super::SaveStarlarkRequest>,
+        ) -> Result<tonic::Response<super::SaveStarlarkResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.bff.v1beta1.BFFService/SaveStarlark",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
+        pub async fn convert_rule_to_string(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ConvertRuleToStringRequest>,
+        ) -> Result<tonic::Response<super::ConvertRuleToStringResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.bff.v1beta1.BFFService/ConvertRuleToString",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
         pub async fn get_pr_info(
             &mut self,
             request: impl tonic::IntoRequest<super::GetPrInfoRequest>,
@@ -1515,6 +1553,14 @@ pub mod bff_service_server {
             &self,
             request: tonic::Request<super::SaveRequest>,
         ) -> Result<tonic::Response<super::SaveResponse>, tonic::Status>;
+        async fn save_starlark(
+            &self,
+            request: tonic::Request<super::SaveStarlarkRequest>,
+        ) -> Result<tonic::Response<super::SaveStarlarkResponse>, tonic::Status>;
+        async fn convert_rule_to_string(
+            &self,
+            request: tonic::Request<super::ConvertRuleToStringRequest>,
+        ) -> Result<tonic::Response<super::ConvertRuleToStringResponse>, tonic::Status>;
         async fn get_pr_info(
             &self,
             request: tonic::Request<super::GetPrInfoRequest>,
@@ -2803,6 +2849,86 @@ pub mod bff_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = SaveSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.bff.v1beta1.BFFService/SaveStarlark" => {
+                    #[allow(non_camel_case_types)]
+                    struct SaveStarlarkSvc<T: BffService>(pub Arc<T>);
+                    impl<
+                        T: BffService,
+                    > tonic::server::UnaryService<super::SaveStarlarkRequest>
+                    for SaveStarlarkSvc<T> {
+                        type Response = super::SaveStarlarkResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::SaveStarlarkRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).save_starlark(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = SaveStarlarkSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.bff.v1beta1.BFFService/ConvertRuleToString" => {
+                    #[allow(non_camel_case_types)]
+                    struct ConvertRuleToStringSvc<T: BffService>(pub Arc<T>);
+                    impl<
+                        T: BffService,
+                    > tonic::server::UnaryService<super::ConvertRuleToStringRequest>
+                    for ConvertRuleToStringSvc<T> {
+                        type Response = super::ConvertRuleToStringResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ConvertRuleToStringRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).convert_rule_to_string(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = ConvertRuleToStringSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

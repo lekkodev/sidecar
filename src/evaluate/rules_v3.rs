@@ -65,6 +65,10 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
                 .ok_or_else(|| Status::internal("empty ctx value kind"))?;
             match a.comparison_operator() {
                 CmpOp::Equals => check_equals_cmp(rule_kind, ctx_kind),
+                CmpOp::NotEquals => match check_equals_cmp(rule_kind, ctx_kind) {
+                    Ok(b) => Ok(!b),
+                    Err(e) => Err(e),
+                },
                 CmpOp::LessThan => check_num_cmp(&a.comparison_operator(), rule_kind, ctx_kind),
                 CmpOp::LessThanOrEquals => {
                     check_num_cmp(&a.comparison_operator(), rule_kind, ctx_kind)
