@@ -87,6 +87,25 @@ pub mod auth_service_client {
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
+        pub async fn logout(
+            &mut self,
+            request: impl tonic::IntoRequest<super::LogoutRequest>,
+        ) -> Result<tonic::Response<super::LogoutResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.bff.v1beta1.AuthService/Logout",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
         pub async fn register_user(
             &mut self,
             request: impl tonic::IntoRequest<super::RegisterUserRequest>,
@@ -157,6 +176,10 @@ pub mod auth_service_server {
             &self,
             request: tonic::Request<super::LoginRequest>,
         ) -> Result<tonic::Response<super::LoginResponse>, tonic::Status>;
+        async fn logout(
+            &self,
+            request: tonic::Request<super::LogoutRequest>,
+        ) -> Result<tonic::Response<super::LogoutResponse>, tonic::Status>;
         async fn register_user(
             &self,
             request: tonic::Request<super::RegisterUserRequest>,
@@ -254,6 +277,44 @@ pub mod auth_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = LoginSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.bff.v1beta1.AuthService/Logout" => {
+                    #[allow(non_camel_case_types)]
+                    struct LogoutSvc<T: AuthService>(pub Arc<T>);
+                    impl<
+                        T: AuthService,
+                    > tonic::server::UnaryService<super::LogoutRequest>
+                    for LogoutSvc<T> {
+                        type Response = super::LogoutResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::LogoutRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move { (*inner).logout(request).await };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = LogoutSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -566,6 +627,25 @@ pub mod bff_service_client {
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/lekko.bff.v1beta1.BFFService/GetUserOAuth",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
+        pub async fn delete_user_o_auth(
+            &mut self,
+            request: impl tonic::IntoRequest<super::DeleteUserOAuthRequest>,
+        ) -> Result<tonic::Response<super::DeleteUserOAuthResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.bff.v1beta1.BFFService/DeleteUserOAuth",
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
@@ -933,6 +1013,28 @@ pub mod bff_service_client {
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
+        pub async fn get_repository_contents(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetRepositoryContentsRequest>,
+        ) -> Result<
+            tonic::Response<super::GetRepositoryContentsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.bff.v1beta1.BFFService/GetRepositoryContents",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
         pub async fn add_namespace(
             &mut self,
             request: impl tonic::IntoRequest<super::AddNamespaceRequest>,
@@ -1006,6 +1108,63 @@ pub mod bff_service_client {
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/lekko.bff.v1beta1.BFFService/RemoveFeature",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
+        pub async fn save(
+            &mut self,
+            request: impl tonic::IntoRequest<super::SaveRequest>,
+        ) -> Result<tonic::Response<super::SaveResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.bff.v1beta1.BFFService/Save",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
+        pub async fn save_starlark(
+            &mut self,
+            request: impl tonic::IntoRequest<super::SaveStarlarkRequest>,
+        ) -> Result<tonic::Response<super::SaveStarlarkResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.bff.v1beta1.BFFService/SaveStarlark",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
+        pub async fn convert_rule_to_string(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ConvertRuleToStringRequest>,
+        ) -> Result<tonic::Response<super::ConvertRuleToStringResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/lekko.bff.v1beta1.BFFService/ConvertRuleToString",
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
@@ -1120,25 +1279,6 @@ pub mod bff_service_client {
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/lekko.bff.v1beta1.BFFService/DeleteBranch",
-            );
-            self.inner.unary(request.into_request(), path, codec).await
-        }
-        pub async fn save(
-            &mut self,
-            request: impl tonic::IntoRequest<super::SaveRequest>,
-        ) -> Result<tonic::Response<super::SaveResponse>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/lekko.bff.v1beta1.BFFService/Save",
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
@@ -1303,6 +1443,10 @@ pub mod bff_service_server {
             &self,
             request: tonic::Request<super::GetUserOAuthRequest>,
         ) -> Result<tonic::Response<super::GetUserOAuthResponse>, tonic::Status>;
+        async fn delete_user_o_auth(
+            &self,
+            request: tonic::Request<super::DeleteUserOAuthRequest>,
+        ) -> Result<tonic::Response<super::DeleteUserOAuthResponse>, tonic::Status>;
         async fn authorize_device(
             &self,
             request: tonic::Request<super::AuthorizeDeviceRequest>,
@@ -1382,6 +1526,13 @@ pub mod bff_service_server {
             &self,
             request: tonic::Request<super::GetFeatureRequest>,
         ) -> Result<tonic::Response<super::GetFeatureResponse>, tonic::Status>;
+        async fn get_repository_contents(
+            &self,
+            request: tonic::Request<super::GetRepositoryContentsRequest>,
+        ) -> Result<
+            tonic::Response<super::GetRepositoryContentsResponse>,
+            tonic::Status,
+        >;
         async fn add_namespace(
             &self,
             request: tonic::Request<super::AddNamespaceRequest>,
@@ -1398,6 +1549,18 @@ pub mod bff_service_server {
             &self,
             request: tonic::Request<super::RemoveFeatureRequest>,
         ) -> Result<tonic::Response<super::RemoveFeatureResponse>, tonic::Status>;
+        async fn save(
+            &self,
+            request: tonic::Request<super::SaveRequest>,
+        ) -> Result<tonic::Response<super::SaveResponse>, tonic::Status>;
+        async fn save_starlark(
+            &self,
+            request: tonic::Request<super::SaveStarlarkRequest>,
+        ) -> Result<tonic::Response<super::SaveStarlarkResponse>, tonic::Status>;
+        async fn convert_rule_to_string(
+            &self,
+            request: tonic::Request<super::ConvertRuleToStringRequest>,
+        ) -> Result<tonic::Response<super::ConvertRuleToStringResponse>, tonic::Status>;
         async fn get_pr_info(
             &self,
             request: tonic::Request<super::GetPrInfoRequest>,
@@ -1422,10 +1585,6 @@ pub mod bff_service_server {
             &self,
             request: tonic::Request<super::DeleteBranchRequest>,
         ) -> Result<tonic::Response<super::DeleteBranchResponse>, tonic::Status>;
-        async fn save(
-            &self,
-            request: tonic::Request<super::SaveRequest>,
-        ) -> Result<tonic::Response<super::SaveResponse>, tonic::Status>;
         async fn review(
             &self,
             request: tonic::Request<super::ReviewRequest>,
@@ -1664,6 +1823,46 @@ pub mod bff_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = GetUserOAuthSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.bff.v1beta1.BFFService/DeleteUserOAuth" => {
+                    #[allow(non_camel_case_types)]
+                    struct DeleteUserOAuthSvc<T: BffService>(pub Arc<T>);
+                    impl<
+                        T: BffService,
+                    > tonic::server::UnaryService<super::DeleteUserOAuthRequest>
+                    for DeleteUserOAuthSvc<T> {
+                        type Response = super::DeleteUserOAuthResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::DeleteUserOAuthRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).delete_user_o_auth(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = DeleteUserOAuthSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -2427,6 +2626,46 @@ pub mod bff_service_server {
                     };
                     Box::pin(fut)
                 }
+                "/lekko.bff.v1beta1.BFFService/GetRepositoryContents" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetRepositoryContentsSvc<T: BffService>(pub Arc<T>);
+                    impl<
+                        T: BffService,
+                    > tonic::server::UnaryService<super::GetRepositoryContentsRequest>
+                    for GetRepositoryContentsSvc<T> {
+                        type Response = super::GetRepositoryContentsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetRepositoryContentsRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).get_repository_contents(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = GetRepositoryContentsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
                 "/lekko.bff.v1beta1.BFFService/AddNamespace" => {
                     #[allow(non_camel_case_types)]
                     struct AddNamespaceSvc<T: BffService>(pub Arc<T>);
@@ -2574,6 +2813,122 @@ pub mod bff_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = RemoveFeatureSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.bff.v1beta1.BFFService/Save" => {
+                    #[allow(non_camel_case_types)]
+                    struct SaveSvc<T: BffService>(pub Arc<T>);
+                    impl<T: BffService> tonic::server::UnaryService<super::SaveRequest>
+                    for SaveSvc<T> {
+                        type Response = super::SaveResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::SaveRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move { (*inner).save(request).await };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = SaveSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.bff.v1beta1.BFFService/SaveStarlark" => {
+                    #[allow(non_camel_case_types)]
+                    struct SaveStarlarkSvc<T: BffService>(pub Arc<T>);
+                    impl<
+                        T: BffService,
+                    > tonic::server::UnaryService<super::SaveStarlarkRequest>
+                    for SaveStarlarkSvc<T> {
+                        type Response = super::SaveStarlarkResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::SaveStarlarkRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).save_starlark(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = SaveStarlarkSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/lekko.bff.v1beta1.BFFService/ConvertRuleToString" => {
+                    #[allow(non_camel_case_types)]
+                    struct ConvertRuleToStringSvc<T: BffService>(pub Arc<T>);
+                    impl<
+                        T: BffService,
+                    > tonic::server::UnaryService<super::ConvertRuleToStringRequest>
+                    for ConvertRuleToStringSvc<T> {
+                        type Response = super::ConvertRuleToStringResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ConvertRuleToStringRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).convert_rule_to_string(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = ConvertRuleToStringSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -2806,42 +3161,6 @@ pub mod bff_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = DeleteBranchSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/lekko.bff.v1beta1.BFFService/Save" => {
-                    #[allow(non_camel_case_types)]
-                    struct SaveSvc<T: BffService>(pub Arc<T>);
-                    impl<T: BffService> tonic::server::UnaryService<super::SaveRequest>
-                    for SaveSvc<T> {
-                        type Response = super::SaveResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::SaveRequest>,
-                        ) -> Self::Future {
-                            let inner = self.0.clone();
-                            let fut = async move { (*inner).save(request).await };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let inner = inner.0;
-                        let method = SaveSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

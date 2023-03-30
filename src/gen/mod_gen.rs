@@ -27,5 +27,10 @@ pub mod lekko {
             include!("lekko.rules.v1beta2.rs");
             // @@protoc_insertion_point(lekko.rules.v1beta2)
         }
+        // @@protoc_insertion_point(attribute:lekko.rules.v1beta3)
+        pub mod v1beta3 {
+            include!("lekko.rules.v1beta3.rs");
+            // @@protoc_insertion_point(lekko.rules.v1beta3)
+        }
     }
 }

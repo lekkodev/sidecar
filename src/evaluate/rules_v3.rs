@@ -8,10 +8,10 @@ use tonic::Status;
 
 use crate::gen::lekko::{
     backend::{self, v1beta1::value::Kind as LekkoKind, v1beta1::Value as LekkoValue},
-    rules::v1beta2::{
+    rules::v1beta3::{
         rule::Rule::{Atom, BoolConst, LogicalExpression, Not},
         ComparisonOperator as CmpOp,
-        LogicalOperator::{And, Or},
+        LogicalOperator::{self, And, Or},
         Rule,
     },
 };
@@ -30,27 +30,11 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
         // Recursive case
         Not(not_rule) => Ok(!check_rule(not_rule.as_ref(), context)?),
         // Recursive case
-        LogicalExpression(le) => {
-            let first = check_rule(
-                le.first_rule
-                    .as_ref()
-                    .ok_or_else(|| Status::internal("empty first rule"))?
-                    .as_ref(),
-                context,
-            )?;
-            let second = check_rule(
-                le.second_rule
-                    .as_ref()
-                    .ok_or_else(|| Status::internal("empty second rule"))?
-                    .as_ref(),
-                context,
-            )?;
-            match le.logical_operator() {
-                And => Ok(first && second),
-                Or => Ok(first || second),
-                _ => Err(Status::internal("unknown logical operator")),
-            }
-        }
+        LogicalExpression(le) => Ok(check_rules(
+            le.rules.as_ref(),
+            &le.logical_operator(),
+            context,
+        )?),
         // Base case
         Atom(a) => {
             let ctx_key = &a.context_key;
@@ -81,6 +65,10 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
                 .ok_or_else(|| Status::internal("empty ctx value kind"))?;
             match a.comparison_operator() {
                 CmpOp::Equals => check_equals_cmp(rule_kind, ctx_kind),
+                CmpOp::NotEquals => match check_equals_cmp(rule_kind, ctx_kind) {
+                    Ok(b) => Ok(!b),
+                    Err(e) => Err(e),
+                },
                 CmpOp::LessThan => check_num_cmp(&a.comparison_operator(), rule_kind, ctx_kind),
                 CmpOp::LessThanOrEquals => {
                     check_num_cmp(&a.comparison_operator(), rule_kind, ctx_kind)
@@ -94,10 +82,28 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
                 CmpOp::EndsWith => check_str_cmp(&a.comparison_operator(), rule_kind, ctx_kind),
                 CmpOp::Contains => check_str_cmp(&a.comparison_operator(), rule_kind, ctx_kind),
                 CmpOp::Present => Err(Status::internal("present should be handled above")),
-                _ => Err(Status::internal("unknown comparison operator")),
+                CmpOp::Unspecified => Err(Status::internal("unknown comparison operator")),
             }
         }
     }
+}
+
+pub fn check_rules(
+    rules: &Vec<Rule>,
+    operator: &LogicalOperator,
+    context: &HashMap<String, LekkoValue>,
+) -> Result<bool, Status> {
+    if rules.is_empty() {
+        return Err(Status::internal("no rules found in logical expression"));
+    }
+    let result: Result<Vec<bool>, Status> =
+        rules.iter().map(|rule| check_rule(rule, context)).collect();
+    return match (result, operator) {
+        (_, LogicalOperator::Unspecified) => Err(Status::internal("unknown logical operator")),
+        (Err(e), _) => Err(e),
+        (Ok(bools), And) => Ok(bools.iter().all(|b| b.to_owned())),
+        (Ok(bools), Or) => Ok(bools.iter().any(|b| b.to_owned())),
+    };
 }
 
 fn check_equals_cmp(rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Status> {
