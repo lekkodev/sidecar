@@ -82,7 +82,7 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
                 CmpOp::EndsWith => check_str_cmp(&a.comparison_operator(), rule_kind, ctx_kind),
                 CmpOp::Contains => check_str_cmp(&a.comparison_operator(), rule_kind, ctx_kind),
                 CmpOp::Present => Err(Status::internal("present should be handled above")),
-                _ => Err(Status::internal("unknown comparison operator")),
+                CmpOp::Unspecified => Err(Status::internal("unknown comparison operator")),
             }
         }
     }
@@ -98,14 +98,12 @@ pub fn check_rules(
     }
     let result: Result<Vec<bool>, Status> =
         rules.iter().map(|rule| check_rule(rule, context)).collect();
-    match result {
-        Ok(bools) => match operator {
-            LogicalOperator::Unspecified => Err(Status::internal("unknown logical operator")),
-            And => Ok(bools.iter().all(|b| b.to_owned())),
-            Or => Ok(bools.iter().any(|b| b.to_owned())),
-        },
-        Err(e) => Err(e),
-    }
+    return match (result, operator) {
+        (_, LogicalOperator::Unspecified) => Err(Status::internal("unknown logical operator")),
+        (Err(e), _) => Err(e),
+        (Ok(bools), And) => Ok(bools.iter().all(|b| b.to_owned())),
+        (Ok(bools), Or) => Ok(bools.iter().any(|b| b.to_owned())),
+    };
 }
 
 fn check_equals_cmp(rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Status> {
