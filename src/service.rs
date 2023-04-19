@@ -122,7 +122,6 @@ impl ConfigurationService for Service {
                 convert_repo_key(
                     request
                         .repo_key
-                        .as_ref()
                         .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
                 ),
                 &request.namespace_list,
@@ -194,7 +193,6 @@ impl ConfigurationService for Service {
                     rk: convert_repo_key(
                         inner
                             .repo_key
-                            .as_ref()
                             .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
                     ),
                     namespace: inner.namespace.clone(),
@@ -240,7 +238,6 @@ impl ConfigurationService for Service {
                     rk: convert_repo_key(
                         inner
                             .repo_key
-                            .as_ref()
                             .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
                     ),
                     namespace: inner.namespace.clone(),
@@ -286,7 +283,6 @@ impl ConfigurationService for Service {
                     rk: convert_repo_key(
                         inner
                             .repo_key
-                            .as_ref()
                             .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
                     ),
                     namespace: inner.namespace.clone(),
@@ -332,7 +328,6 @@ impl ConfigurationService for Service {
                     rk: convert_repo_key(
                         inner
                             .repo_key
-                            .as_ref()
                             .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
                     ),
                     namespace: inner.namespace.clone(),
@@ -377,7 +372,6 @@ impl ConfigurationService for Service {
                 rk: convert_repo_key(
                     inner
                         .repo_key
-                        .as_ref()
                         .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
                 ),
                 namespace: inner.namespace.clone(),
@@ -420,7 +414,6 @@ impl ConfigurationService for Service {
                     rk: convert_repo_key(
                         inner
                             .repo_key
-                            .as_ref()
                             .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
                     ),
                     namespace: inner.namespace.clone(),

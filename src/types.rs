@@ -36,9 +36,9 @@ where
 }
 
 // Convert repository key from the publicly defined protobuf message to the private one.
-pub fn convert_repo_key(rk: &PublicRepositoryKey) -> RepositoryKey {
+pub fn convert_repo_key(rk: PublicRepositoryKey) -> RepositoryKey {
     RepositoryKey {
-        owner_name: rk.owner_name.to_owned(),
-        repo_name: rk.repo_name.to_owned(),
+        owner_name: rk.owner_name,
+        repo_name: rk.repo_name,
     }
 }
