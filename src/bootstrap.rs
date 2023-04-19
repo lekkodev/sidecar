@@ -8,7 +8,7 @@ use sha1::Digest;
 use tonic::Status;
 use yaml_rust::YamlLoader;
 
-use crate::gen::lekko::{
+use crate::gen::mod_cli::lekko::{
     backend::v1beta1::{Feature, GetRepositoryContentsResponse, Namespace},
     feature,
 };

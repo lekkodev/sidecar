@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use prost_types::Any;
 use tonic::Status;
 
-use crate::gen::lekko::{
-    backend::v1beta1::Value,
-    feature::v1beta1::{Constraint, Feature},
+use crate::{
+    gen::mod_cli::lekko::feature::v1beta1::{Constraint, Feature},
+    gen::mod_sdk::lekko::client::v1beta1::Value,
 };
 
 use super::{rules::check_rule, rules_v3::check_rule as check_rule_v3};

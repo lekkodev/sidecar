@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    gen::lekko::{
+    gen::mod_cli::lekko::{
         backend::v1beta1::{
             distribution_service_client::DistributionServiceClient, DeregisterClientRequest,
             GetRepositoryContentsRequest, GetRepositoryContentsResponse,

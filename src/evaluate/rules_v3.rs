@@ -6,13 +6,15 @@ use prost_types::{
 };
 use tonic::Status;
 
-use crate::gen::lekko::{
-    backend::{self, v1beta1::value::Kind as LekkoKind, v1beta1::Value as LekkoValue},
-    rules::v1beta3::{
+use crate::gen::{
+    mod_cli::lekko::rules::v1beta3::{
         rule::Rule::{Atom, BoolConst, LogicalExpression, Not},
         ComparisonOperator as CmpOp,
         LogicalOperator::{self, And, Or},
         Rule,
+    },
+    mod_sdk::lekko::client::{
+        self, v1beta1::value::Kind as LekkoKind, v1beta1::Value as LekkoValue,
     },
 };
 
@@ -109,16 +111,16 @@ pub fn check_rules(
 fn check_equals_cmp(rule_kind: &Kind, ctx_kind: &LekkoKind) -> Result<bool, Status> {
     match rule_kind {
         BoolValue(rule_bool) => match ctx_kind {
-            backend::v1beta1::value::Kind::BoolValue(ctx_bool) => Ok(rule_bool == ctx_bool),
+            client::v1beta1::value::Kind::BoolValue(ctx_bool) => Ok(rule_bool == ctx_bool),
             _ => Err(Status::invalid_argument("type mismatch")),
         },
         NumberValue(rule_num) => match ctx_kind {
-            backend::v1beta1::value::Kind::IntValue(ctx_num) => Ok(*rule_num == *ctx_num as f64),
-            backend::v1beta1::value::Kind::DoubleValue(ctx_num) => Ok(rule_num == ctx_num),
+            client::v1beta1::value::Kind::IntValue(ctx_num) => Ok(*rule_num == *ctx_num as f64),
+            client::v1beta1::value::Kind::DoubleValue(ctx_num) => Ok(rule_num == ctx_num),
             _ => Err(Status::invalid_argument("type mismatch")),
         },
         StringValue(rule_str) => match ctx_kind {
-            backend::v1beta1::value::Kind::StringValue(ctx_str) => Ok(rule_str == ctx_str),
+            client::v1beta1::value::Kind::StringValue(ctx_str) => Ok(rule_str == ctx_str),
             _ => Err(Status::invalid_argument("type mismatch")),
         },
         _ => Err(Status::internal("unsupported rule value kind")),

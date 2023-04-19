@@ -44,8 +44,8 @@ lint:
 
 .PHONY: generate
 generate:
-	buf generate --template buf.gen.yaml buf.build/lekkodev/cli
-
+	buf generate --template templates/buf.gen.sdk.yaml buf.build/lekkodev/sdk
+	buf generate --template templates/buf.gen.cli.yaml --path lekko/backend --path lekko/rules --path lekko/feature buf.build/lekkodev/cli:sh-deps
 
 .PHONY: all
 all: build test format lint

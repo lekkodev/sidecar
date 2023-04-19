@@ -11,21 +11,18 @@ use tonic::{
 
 use crate::{
     evaluate::evaluator::evaluate,
-    gen::lekko::{
-        backend::v1beta1::{
-            configuration_service_client::ConfigurationServiceClient,
-            configuration_service_server::ConfigurationService, DeregisterRequest,
-            DeregisterResponse, GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest,
-            GetFloatValueResponse, GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest,
-            GetJsonValueResponse, GetProtoValueRequest, GetProtoValueResponse,
-            GetStringValueRequest, GetStringValueResponse, RegisterRequest, RegisterResponse,
-            Value,
-        },
-        feature::v1beta1::FeatureType,
+    gen::mod_cli::lekko::feature::v1beta1::FeatureType,
+    gen::mod_sdk::lekko::client::v1beta1::{
+        configuration_service_client::ConfigurationServiceClient,
+        configuration_service_server::ConfigurationService, DeregisterRequest, DeregisterResponse,
+        GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest, GetFloatValueResponse,
+        GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest, GetJsonValueResponse,
+        GetProtoValueRequest, GetProtoValueResponse, GetStringValueRequest, GetStringValueResponse,
+        RegisterRequest, RegisterResponse, Value,
     },
     metrics::Metrics,
     store::Store,
-    types::{self, FeatureRequestParams, APIKEY},
+    types::{self, convert_repo_key, FeatureRequestParams, APIKEY},
 };
 
 // Mode represents the running mode of the sidecar.
@@ -121,7 +118,16 @@ impl ConfigurationService for Service {
             .to_owned();
         let request = request.into_inner();
         self.store
-            .register(request.repo_key.unwrap(), &request.namespace_list, apikey)
+            .register(
+                convert_repo_key(
+                    request
+                        .repo_key
+                        .as_ref()
+                        .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+                ),
+                &request.namespace_list,
+                apikey,
+            )
             .await?;
         Ok(Response::new(RegisterResponse::default()))
     }
@@ -182,16 +188,23 @@ impl ConfigurationService for Service {
         }
 
         let inner = request.into_inner();
-        let bool_result = types::from_any::<bool>(&self.get_value_local(
-            FeatureRequestParams {
-                rk: inner.repo_key.clone().unwrap(),
-                namespace: inner.namespace.clone(),
-                feature: inner.key.clone(),
-            },
-            &inner.context,
-            apikey,
-            FeatureType::Bool,
-        )?);
+        let bool_result = types::from_any::<bool>(
+            &self.get_value_local(
+                FeatureRequestParams {
+                    rk: convert_repo_key(
+                        inner
+                            .repo_key
+                            .as_ref()
+                            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+                    ),
+                    namespace: inner.namespace.clone(),
+                    feature: inner.key.clone(),
+                },
+                &inner.context,
+                apikey,
+                FeatureType::Bool,
+            )?,
+        );
         match bool_result {
             Ok(b) => Ok(Response::new(GetBoolValueResponse { value: b })),
             Err(e) => Err(tonic::Status::internal(e.to_string())),
@@ -221,16 +234,23 @@ impl ConfigurationService for Service {
         }
 
         let inner = request.into_inner();
-        let int_result = types::from_any::<i64>(&self.get_value_local(
-            FeatureRequestParams {
-                rk: inner.repo_key.clone().unwrap(),
-                namespace: inner.namespace.clone(),
-                feature: inner.key.clone(),
-            },
-            &inner.context,
-            apikey,
-            FeatureType::Int,
-        )?);
+        let int_result = types::from_any::<i64>(
+            &self.get_value_local(
+                FeatureRequestParams {
+                    rk: convert_repo_key(
+                        inner
+                            .repo_key
+                            .as_ref()
+                            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+                    ),
+                    namespace: inner.namespace.clone(),
+                    feature: inner.key.clone(),
+                },
+                &inner.context,
+                apikey,
+                FeatureType::Int,
+            )?,
+        );
         match int_result {
             Ok(i) => Ok(Response::new(GetIntValueResponse { value: i })),
             Err(e) => Err(tonic::Status::internal(e.to_string())),
@@ -260,16 +280,23 @@ impl ConfigurationService for Service {
         }
 
         let inner = request.into_inner();
-        let float_result = types::from_any::<f64>(&self.get_value_local(
-            FeatureRequestParams {
-                rk: inner.repo_key.clone().unwrap(),
-                namespace: inner.namespace.clone(),
-                feature: inner.key.clone(),
-            },
-            &inner.context,
-            apikey,
-            FeatureType::Float,
-        )?);
+        let float_result = types::from_any::<f64>(
+            &self.get_value_local(
+                FeatureRequestParams {
+                    rk: convert_repo_key(
+                        inner
+                            .repo_key
+                            .as_ref()
+                            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+                    ),
+                    namespace: inner.namespace.clone(),
+                    feature: inner.key.clone(),
+                },
+                &inner.context,
+                apikey,
+                FeatureType::Float,
+            )?,
+        );
         match float_result {
             Ok(f) => Ok(Response::new(GetFloatValueResponse { value: f })),
             Err(e) => Err(tonic::Status::internal(e.to_string())),
@@ -299,16 +326,23 @@ impl ConfigurationService for Service {
         }
 
         let inner = request.into_inner();
-        let string_result = types::from_any::<String>(&self.get_value_local(
-            FeatureRequestParams {
-                rk: inner.repo_key.clone().unwrap(),
-                namespace: inner.namespace.clone(),
-                feature: inner.key.clone(),
-            },
-            &inner.context,
-            apikey,
-            FeatureType::String,
-        )?);
+        let string_result = types::from_any::<String>(
+            &self.get_value_local(
+                FeatureRequestParams {
+                    rk: convert_repo_key(
+                        inner
+                            .repo_key
+                            .as_ref()
+                            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+                    ),
+                    namespace: inner.namespace.clone(),
+                    feature: inner.key.clone(),
+                },
+                &inner.context,
+                apikey,
+                FeatureType::String,
+            )?,
+        );
         match string_result {
             Ok(s) => Ok(Response::new(GetStringValueResponse { value: s })),
             Err(e) => Err(tonic::Status::internal(e.to_string())),
@@ -340,7 +374,12 @@ impl ConfigurationService for Service {
         let inner = request.into_inner();
         let any = self.get_value_local(
             FeatureRequestParams {
-                rk: inner.repo_key.clone().unwrap(),
+                rk: convert_repo_key(
+                    inner
+                        .repo_key
+                        .as_ref()
+                        .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+                ),
                 namespace: inner.namespace.clone(),
                 feature: inner.key.clone(),
             },
@@ -375,16 +414,23 @@ impl ConfigurationService for Service {
         }
 
         let inner = request.into_inner();
-        let json_result = types::from_any::<prost_types::Value>(&self.get_value_local(
-            FeatureRequestParams {
-                rk: inner.repo_key.clone().unwrap(),
-                namespace: inner.namespace.clone(),
-                feature: inner.key.clone(),
-            },
-            &inner.context,
-            apikey,
-            FeatureType::Json,
-        )?);
+        let json_result = types::from_any::<prost_types::Value>(
+            &self.get_value_local(
+                FeatureRequestParams {
+                    rk: convert_repo_key(
+                        inner
+                            .repo_key
+                            .as_ref()
+                            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+                    ),
+                    namespace: inner.namespace.clone(),
+                    feature: inner.key.clone(),
+                },
+                &inner.context,
+                apikey,
+                FeatureType::Json,
+            )?,
+        );
         match json_result {
             Ok(v) => Ok(Response::new(GetJsonValueResponse {
                 value: serde_json::to_vec(&ValueWrapper(&v)).map_err(|e| {
