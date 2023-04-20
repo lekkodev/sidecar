@@ -15,10 +15,13 @@ use tonic::{
 };
 
 use crate::{
-    gen::lekko::backend::v1beta1::{
-        distribution_service_client::DistributionServiceClient,
+    gen::mod_cli::lekko::backend::v1beta1::{
+        distribution_service_client::DistributionServiceClient, ContextKey, FlagEvaluationEvent,
+        SendFlagEvaluationMetricsRequest,
+    },
+    gen::mod_sdk::lekko::client::v1beta1::{
         value::Kind::{BoolValue, DoubleValue, IntValue, StringValue},
-        ContextKey, FlagEvaluationEvent, SendFlagEvaluationMetricsRequest, Value,
+        Value,
     },
     store::FeatureData,
     types::{FeatureRequestParams, APIKEY},

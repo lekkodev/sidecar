@@ -4,5 +4,6 @@
 // clippy allows, which is incorrect b/c protobuf generated code doesn't implement Eq by
 // default since they want you to use protobuf's equality specifically.
 #[allow(clippy::derive_partial_eq_without_eq)]
-mod mod_gen;
-pub use mod_gen::*;
+pub mod mod_cli;
+#[allow(clippy::derive_partial_eq_without_eq)]
+pub mod mod_sdk;
