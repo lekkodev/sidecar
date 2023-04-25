@@ -35,7 +35,7 @@ use crate::{
 //
 // Static fetches from the bootstrap and always evaluates against those values. No
 // connection is made to Lekko services.
-#[derive(clap::ValueEnum, Clone, Default, Debug)]
+#[derive(clap::ValueEnum, Copy, Clone, Default, Debug)]
 pub enum Mode {
     #[default]
     Default,
@@ -50,7 +50,7 @@ pub struct Service {
         ConfigurationServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
     pub store: Store,
     pub mode: Mode,
-    pub metrics: Metrics,
+    pub metrics: Option<Metrics>,
     pub shutdown_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
@@ -89,13 +89,19 @@ impl Service {
             )));
         }
         let eval_result = evaluate(&feature_data.feature, context)?;
-        self.metrics.track_flag_evaluation(
-            &feature,
-            &feature_data,
-            context,
-            &eval_result.1,
-            &api_key,
-        );
+
+        match &self.metrics {
+            None => {}
+            Some(met) => {
+                met.track_flag_evaluation(
+                    &feature,
+                    &feature_data,
+                    context,
+                    &eval_result.1,
+                    &api_key,
+                )
+            }
+        };
         Ok(eval_result.0)
     }
 }

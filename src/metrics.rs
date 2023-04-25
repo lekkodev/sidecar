@@ -24,7 +24,8 @@ use crate::{
         Value,
     },
     store::FeatureData,
-    types::{FeatureRequestParams, APIKEY},
+    types::{FeatureRequestParams, APIKEY}, 
+    service::Mode,
 };
 
 // Component responsible for receiving evaluation metrics as they come in
@@ -44,18 +45,20 @@ impl Metrics {
     pub fn new(
         dist_client: DistributionServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
-        >,
-    ) -> Self {
-        // create a sync channel to send and receive metrics.
-        // approximate size of each event is 1KB. this buffer is sized to not exceed 1MB total memory.
-        // This can be modified as necessary.
-        let (tx, rx) = channel(1024);
-        // spawn a new thread that receives metrics and sends them over rpc
-        spawn(async {
-            Metrics::worker(rx, dist_client).await;
-        });
-
-        Self { tx }
+        >, mode: Mode) -> Option<Self> {
+        if !matches!(mode, Mode::Static) {
+            // create a sync channel to send and receive metrics.
+            // approximate size of each event is 1KB. this buffer is sized to not exceed 1MB total memory.
+            // This can be modified as necessary.
+            let (tx, rx) = channel(1024);
+            // spawn a new thread that receives metrics and sends them over rpc
+            spawn(async {
+                Metrics::worker(rx, dist_client).await;
+            });
+            Some(Self { tx })
+        } else {
+            None
+        }
     }
 
     // Sends a flag evaluation event to an async thread for delivery to lekko backend.

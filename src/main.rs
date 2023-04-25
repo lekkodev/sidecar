@@ -95,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
     let store = Store::new(dist_client.clone(), bootstrap_data);
-    let metrics = Metrics::new(dist_client);
+    let metrics = Metrics::new(dist_client, args.mode);
     let service = ConfigurationServiceServer::new(Service {
         shutdown_tx: Mutex::new(Some(shutdown_tx)),
         config_client,
