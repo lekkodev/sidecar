@@ -35,10 +35,10 @@ where
     }
 }
 
-// Convert repository key from the publicly defined protobuf message to the private one.
-pub fn convert_repo_key(rk: PublicRepositoryKey) -> RepositoryKey {
+// Copies repository key from the publicly defined protobuf message into a private one.
+pub fn convert_repo_key(rk: &PublicRepositoryKey) -> RepositoryKey {
     RepositoryKey {
-        owner_name: rk.owner_name,
-        repo_name: rk.repo_name,
+        owner_name: rk.owner_name.clone(),
+        repo_name: rk.repo_name.clone(),
     }
 }
