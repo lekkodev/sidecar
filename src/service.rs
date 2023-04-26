@@ -2,6 +2,7 @@ use std::{collections::HashMap, ops::DerefMut, sync::Mutex};
 
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
+use log::error;
 use prost_types::{value::Kind, Any};
 use tonic::{
     body::BoxBody,
@@ -20,6 +21,7 @@ use crate::{
         GetProtoValueRequest, GetProtoValueResponse, GetStringValueRequest, GetStringValueResponse,
         RegisterRequest, RegisterResponse, Value,
     },
+    logging::InsertLogFields,
     metrics::Metrics,
     store::Store,
     types::{self, convert_repo_key, FeatureRequestParams, APIKEY},
@@ -120,7 +122,7 @@ impl ConfigurationService for Service {
         self.store
             .register(
                 convert_repo_key(
-                    request
+                    &request
                         .repo_key
                         .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
                 ),
@@ -141,7 +143,7 @@ impl ConfigurationService for Service {
             match self.store.deregister().await {
                 Ok(_) => {}
                 Err(err) => {
-                    println!("error encountered when proxying deregistration. continuing with shutdown {err:?}")
+                    error!("error encountered when proxying deregistration. continuing with shutdown {err:?}")
                 }
             }
         }
@@ -168,7 +170,6 @@ impl ConfigurationService for Service {
         &self,
         request: Request<GetBoolValueRequest>,
     ) -> Result<tonic::Response<GetBoolValueResponse>, tonic::Status> {
-        println!("Got a request for GetBoolValue");
         let apikey = request
             .metadata()
             .get(APIKEY)
@@ -178,42 +179,32 @@ impl ConfigurationService for Service {
         if matches!(self.mode, Mode::Consistent) {
             let mut proxy_req = Request::new(request.get_ref().clone());
             self.proxy_headers(&mut proxy_req, request.metadata());
-            let resp = self.config_client.clone().get_bool_value(proxy_req).await;
-            if let Err(e) = resp {
-                println!("error in proxying {e:?}");
-                return Err(e);
-            }
-            return resp;
+            return self.config_client.clone().get_bool_value(proxy_req).await;
         }
 
         let inner = request.into_inner();
-        let bool_result = types::from_any::<bool>(
-            &self.get_value_local(
-                FeatureRequestParams {
-                    rk: convert_repo_key(
-                        inner
-                            .repo_key
-                            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
-                    ),
-                    namespace: inner.namespace.clone(),
-                    feature: inner.key.clone(),
-                },
-                &inner.context,
-                apikey,
-                FeatureType::Bool,
-            )?,
-        );
-        match bool_result {
-            Ok(b) => Ok(Response::new(GetBoolValueResponse { value: b })),
-            Err(e) => Err(tonic::Status::internal(e.to_string())),
-        }
+        let params = FeatureRequestParams {
+            rk: convert_repo_key(
+                inner
+                    .repo_key
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+            ),
+            namespace: inner.namespace.clone(),
+            feature: inner.key.clone(),
+        };
+        let result = &self.get_value_local(params, &inner.context, apikey, FeatureType::Bool)?;
+
+        Ok(inner.insert_log_fields(Response::new(GetBoolValueResponse {
+            value: types::from_any::<bool>(result)
+                .map_err(|e| tonic::Status::internal(e.to_string()))?,
+        })))
     }
 
     async fn get_int_value(
         &self,
         request: Request<GetIntValueRequest>,
     ) -> Result<tonic::Response<GetIntValueResponse>, tonic::Status> {
-        println!("Got a request for GetIntValue");
         let apikey = request
             .metadata()
             .get(APIKEY)
@@ -223,42 +214,34 @@ impl ConfigurationService for Service {
         if matches!(self.mode, Mode::Consistent) {
             let mut proxy_req = Request::new(request.get_ref().clone());
             self.proxy_headers(&mut proxy_req, request.metadata());
-            let resp = self.config_client.clone().get_int_value(proxy_req).await;
-            if let Err(e) = resp {
-                println!("error in proxying {e:?}");
-                return Err(e);
-            }
-            return resp;
+            return self.config_client.clone().get_int_value(proxy_req).await;
         }
 
         let inner = request.into_inner();
-        let int_result = types::from_any::<i64>(
-            &self.get_value_local(
-                FeatureRequestParams {
-                    rk: convert_repo_key(
-                        inner
-                            .repo_key
-                            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
-                    ),
-                    namespace: inner.namespace.clone(),
-                    feature: inner.key.clone(),
-                },
-                &inner.context,
-                apikey,
-                FeatureType::Int,
-            )?,
-        );
-        match int_result {
-            Ok(i) => Ok(Response::new(GetIntValueResponse { value: i })),
-            Err(e) => Err(tonic::Status::internal(e.to_string())),
-        }
+        let params = FeatureRequestParams {
+            rk: convert_repo_key(
+                inner
+                    .repo_key
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+            ),
+            namespace: inner.namespace.clone(),
+            feature: inner.key.clone(),
+        };
+        let i = types::from_any::<i64>(&self.get_value_local(
+            params,
+            &inner.context,
+            apikey,
+            FeatureType::Int,
+        )?)
+        .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(inner.insert_log_fields(Response::new(GetIntValueResponse { value: i })))
     }
 
     async fn get_float_value(
         &self,
         request: Request<GetFloatValueRequest>,
     ) -> Result<tonic::Response<GetFloatValueResponse>, tonic::Status> {
-        println!("Got a request for GetFloatValue");
         let apikey = request
             .metadata()
             .get(APIKEY)
@@ -268,42 +251,35 @@ impl ConfigurationService for Service {
         if matches!(self.mode, Mode::Consistent) {
             let mut proxy_req = Request::new(request.get_ref().clone());
             self.proxy_headers(&mut proxy_req, request.metadata());
-            let resp = self.config_client.clone().get_float_value(proxy_req).await;
-            if let Err(e) = resp {
-                println!("error in proxying {e:?}");
-                return Err(e);
-            }
-            return resp;
+            return self.config_client.clone().get_float_value(proxy_req).await;
         }
 
         let inner = request.into_inner();
-        let float_result = types::from_any::<f64>(
-            &self.get_value_local(
-                FeatureRequestParams {
-                    rk: convert_repo_key(
-                        inner
-                            .repo_key
-                            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
-                    ),
-                    namespace: inner.namespace.clone(),
-                    feature: inner.key.clone(),
-                },
-                &inner.context,
-                apikey,
-                FeatureType::Float,
-            )?,
-        );
-        match float_result {
-            Ok(f) => Ok(Response::new(GetFloatValueResponse { value: f })),
-            Err(e) => Err(tonic::Status::internal(e.to_string())),
-        }
+        let params = FeatureRequestParams {
+            rk: convert_repo_key(
+                inner
+                    .repo_key
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+            ),
+            namespace: inner.namespace.clone(),
+            feature: inner.key.clone(),
+        };
+
+        let f = types::from_any::<f64>(&self.get_value_local(
+            params,
+            &inner.context,
+            apikey,
+            FeatureType::Float,
+        )?)
+        .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(inner.insert_log_fields(Response::new(GetFloatValueResponse { value: f })))
     }
 
     async fn get_string_value(
         &self,
         request: Request<GetStringValueRequest>,
     ) -> Result<tonic::Response<GetStringValueResponse>, tonic::Status> {
-        println!("Got a request for GetStringValue");
         let apikey = request
             .metadata()
             .get(APIKEY)
@@ -313,43 +289,35 @@ impl ConfigurationService for Service {
         if matches!(self.mode, Mode::Consistent) {
             let mut proxy_req = Request::new(request.get_ref().clone());
             self.proxy_headers(&mut proxy_req, request.metadata());
-            let resp = self.config_client.clone().get_string_value(proxy_req).await;
-            if let Err(e) = resp {
-                println!("error in proxying {e:?}");
-                return Err(e);
-            }
-            return resp;
+            return self.config_client.clone().get_string_value(proxy_req).await;
         }
 
         let inner = request.into_inner();
-        let string_result = types::from_any::<String>(
-            &self.get_value_local(
-                FeatureRequestParams {
-                    rk: convert_repo_key(
-                        inner
-                            .repo_key
-                            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
-                    ),
-                    namespace: inner.namespace.clone(),
-                    feature: inner.key.clone(),
-                },
-                &inner.context,
-                apikey,
-                FeatureType::String,
-            )?,
-        );
-        match string_result {
-            Ok(s) => Ok(Response::new(GetStringValueResponse { value: s })),
-            Err(e) => Err(tonic::Status::internal(e.to_string())),
-        }
+        let params = FeatureRequestParams {
+            rk: convert_repo_key(
+                inner
+                    .repo_key
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+            ),
+            namespace: inner.namespace.clone(),
+            feature: inner.key.clone(),
+        };
+
+        let s = types::from_any::<String>(&self.get_value_local(
+            params,
+            &inner.context,
+            apikey,
+            FeatureType::String,
+        )?)
+        .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(inner.insert_log_fields(Response::new(GetStringValueResponse { value: s })))
     }
 
     async fn get_proto_value(
         &self,
         request: Request<GetProtoValueRequest>,
     ) -> Result<tonic::Response<GetProtoValueResponse>, tonic::Status> {
-        println!("Got a request for GetProtoValue");
-
         let apikey = request
             .metadata()
             .get(APIKEY)
@@ -359,37 +327,28 @@ impl ConfigurationService for Service {
         if matches!(self.mode, Mode::Consistent) {
             let mut proxy_req = Request::new(request.get_ref().clone());
             self.proxy_headers(&mut proxy_req, request.metadata());
-            let resp = self.config_client.clone().get_proto_value(proxy_req).await;
-            if let Err(e) = resp {
-                println!("error in proxying {e:?}");
-                return Err(e);
-            }
-            return resp;
+            return self.config_client.clone().get_proto_value(proxy_req).await;
         }
         let inner = request.into_inner();
-        let any = self.get_value_local(
-            FeatureRequestParams {
-                rk: convert_repo_key(
-                    inner
-                        .repo_key
-                        .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
-                ),
-                namespace: inner.namespace.clone(),
-                feature: inner.key.clone(),
-            },
-            &inner.context,
-            apikey,
-            FeatureType::Proto,
-        )?;
-        Ok(Response::new(GetProtoValueResponse { value: Some(any) }))
+        let params = FeatureRequestParams {
+            rk: convert_repo_key(
+                inner
+                    .repo_key
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+            ),
+            namespace: inner.namespace.clone(),
+            feature: inner.key.clone(),
+        };
+
+        let any = self.get_value_local(params, &inner.context, apikey, FeatureType::Proto)?;
+        Ok(inner.insert_log_fields(Response::new(GetProtoValueResponse { value: Some(any) })))
     }
 
     async fn get_json_value(
         &self,
         request: Request<GetJsonValueRequest>,
     ) -> Result<tonic::Response<GetJsonValueResponse>, tonic::Status> {
-        println!("Got a request for GetJSONValue");
-
         let apikey = request
             .metadata()
             .get(APIKEY)
@@ -399,21 +358,17 @@ impl ConfigurationService for Service {
         if matches!(self.mode, Mode::Consistent) {
             let mut proxy_req = Request::new(request.get_ref().clone());
             self.proxy_headers(&mut proxy_req, request.metadata());
-            let resp = self.config_client.clone().get_json_value(proxy_req).await;
-            if let Err(e) = resp {
-                println!("error in proxying {e:?}");
-                return Err(e);
-            }
-            return resp;
+            return self.config_client.clone().get_json_value(proxy_req).await;
         }
 
         let inner = request.into_inner();
-        let json_result = types::from_any::<prost_types::Value>(
+        let v = types::from_any::<prost_types::Value>(
             &self.get_value_local(
                 FeatureRequestParams {
                     rk: convert_repo_key(
                         inner
                             .repo_key
+                            .as_ref()
                             .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
                     ),
                     namespace: inner.namespace.clone(),
@@ -423,15 +378,13 @@ impl ConfigurationService for Service {
                 apikey,
                 FeatureType::Json,
             )?,
-        );
-        match json_result {
-            Ok(v) => Ok(Response::new(GetJsonValueResponse {
-                value: serde_json::to_vec(&ValueWrapper(&v)).map_err(|e| {
-                    Status::internal("failure serializing json ".to_owned() + &e.to_string())
-                })?,
-            })),
-            Err(e) => Err(tonic::Status::internal(e.to_string())),
-        }
+        )
+        .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(inner.insert_log_fields(Response::new(GetJsonValueResponse {
+            value: serde_json::to_vec(&ValueWrapper(&v)).map_err(|e| {
+                Status::internal("failure serializing json ".to_owned() + &e.to_string())
+            })?,
+        })))
     }
 }
 

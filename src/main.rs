@@ -5,6 +5,9 @@ use sidecar::gen::mod_cli::lekko::backend::v1beta1::distribution_service_client:
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_server::ConfigurationServiceServer;
 
+use hyper::{http::Request, Body};
+use log::log;
+use sidecar::logging;
 use sidecar::metrics::Metrics;
 use sidecar::service::{Mode, Service};
 use sidecar::store::Store;
@@ -13,6 +16,11 @@ use std::sync::Mutex;
 use tokio::signal::unix::SignalKind;
 use tonic::codegen::CompressionEncoding;
 use tonic::transport::{Server, Uri};
+use tower_http::{
+    trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
+    LatencyUnit,
+};
+use tracing::{info, Level, Span};
 
 // Struct containing all the cmd-line args we accept
 #[derive(Parser, Debug)]
@@ -43,17 +51,22 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    logging::init();
     let args = Args::parse();
-    println!("{args:?}");
     let addr = match args.bind_addr.parse::<SocketAddr>() {
-        Err(err) => panic!("parsing bind_addr failed: {err:?}"),
+        Err(err) => panic!("parsing bind_addr {} failed: {err:?}", args.bind_addr),
         Ok(a) => a,
     };
     let lekko_addr = match args.lekko_addr.parse::<Uri>() {
-        Err(err) => panic!("parsing lekko_addr failed: {err:?}"),
+        Err(err) => panic!("parsing lekko_addr {} failed: {err:?}", args.lekko_addr),
         Ok(a) => a,
     };
-    println!("listening on port: {:?}", addr.to_owned());
+    log!(
+        log::max_level().to_level().unwrap_or(log::Level::Warn),
+        "binding server to: {:} with args: {:?}",
+        addr,
+        args
+    );
 
     let http_client = hyper::Client::builder().build(
         HttpsConnectorBuilder::new()
@@ -107,6 +120,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .accept_compressed(CompressionEncoding::Gzip);
 
     Server::builder()
+        .layer(
+            TraceLayer::new_for_grpc()
+                .make_span_with(DefaultMakeSpan::new().include_headers(true))
+                .on_request(|request: &Request<Body>, _span: &Span| {
+                    let method = logging::http_uri_to_method(request.uri().to_string());
+                    info!("request {} {}", method.service, method.method);
+                })
+                .on_response(
+                    |response: &hyper::http::Response<_>,
+                     latency: std::time::Duration,
+                     _span: &Span| {
+                        let extra_text = logging::get_trace_string(response.extensions());
+                        info!(
+                            "response {} ms {}",
+                            latency.as_millis(),
+                            extra_text.unwrap_or("".to_string()),
+                        );
+                    },
+                )
+                .on_failure(
+                    DefaultOnFailure::new()
+                        .level(Level::ERROR)
+                        .latency_unit(LatencyUnit::Millis),
+                ),
+        )
         .add_service(service)
         .serve_with_shutdown(addr, async move {
             tokio::signal::unix::signal(SignalKind::terminate())

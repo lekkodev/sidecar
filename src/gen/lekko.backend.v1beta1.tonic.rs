@@ -200,7 +200,7 @@ pub mod distribution_service_client {
 pub mod distribution_service_server {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
     use tonic::codegen::*;
-    ///Generated trait containing gRPC methods that should be implemented for use with DistributionServiceServer.
+    /// Generated trait containing gRPC methods that should be implemented for use with DistributionServiceServer.
     #[async_trait]
     pub trait DistributionService: Send + Sync + 'static {
         async fn get_repository_version(
