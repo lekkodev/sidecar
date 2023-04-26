@@ -4,7 +4,7 @@ use log::log_enabled;
 
 use crate::gen::mod_sdk::lekko::client::v1beta1::{
     GetBoolValueRequest, GetFloatValueRequest, GetIntValueRequest, GetJsonValueRequest,
-    GetProtoValueRequest, RepositoryKey, Value, GetStringValueRequest,
+    GetProtoValueRequest, GetStringValueRequest, RepositoryKey, Value,
 };
 
 pub fn init() {
@@ -20,13 +20,15 @@ pub struct Method {
     pub method: String,
 }
 
-// This is just the starting point for tracing.
+// This is just the starting point for observability.
 // There are a few low hanging fruit:
 // - Responding correctly with error messages
 // - Pass Method around correctly to give one log line per request
 // - Printing values of eval along with the context in a type safe way
-//   - this can probably done with an associated type for the trait.
-struct TraceInfo {
+//   - this can probably done with an associated type for the trait
+// - using spans correctly
+// - using macro to not require the 6 copies of the function below
+struct LogFieldsInfo {
     rk: RepositoryKey,
     namespace: String,
     feature: String,
@@ -34,19 +36,19 @@ struct TraceInfo {
     debug_context_res: Option<HashMap<String, Value>>,
 }
 
-pub trait InsertTrace {
-    fn insert_trace<M>(&self, message: tonic::Response<M>) -> tonic::Response<M>;
+pub trait InsertLogFields {
+    fn insert_log_fields<M>(&self, message: tonic::Response<M>) -> tonic::Response<M>;
 }
 
-impl InsertTrace for GetBoolValueRequest {
-    fn insert_trace<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
+impl InsertLogFields for GetBoolValueRequest {
+    fn insert_log_fields<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
         let debug_context_res = if log_enabled!(log::Level::Debug) {
             Some(self.context.clone())
         } else {
             None
         };
         message.extensions_mut().insert({
-            TraceInfo {
+            LogFieldsInfo {
                 // we can unwrap this since we can assume that the client would
                 // have failed already
                 rk: self.repo_key.clone().unwrap(),
@@ -59,15 +61,15 @@ impl InsertTrace for GetBoolValueRequest {
     }
 }
 
-impl InsertTrace for GetIntValueRequest {
-    fn insert_trace<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
+impl InsertLogFields for GetIntValueRequest {
+    fn insert_log_fields<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
         let debug_context_res = if log_enabled!(log::Level::Debug) {
             Some(self.context.clone())
         } else {
             None
         };
         message.extensions_mut().insert({
-            TraceInfo {
+            LogFieldsInfo {
                 // we can unwrap this since we can assume that the client would
                 // have failed already
                 rk: self.repo_key.clone().unwrap(),
@@ -80,15 +82,15 @@ impl InsertTrace for GetIntValueRequest {
     }
 }
 
-impl InsertTrace for GetFloatValueRequest {
-    fn insert_trace<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
+impl InsertLogFields for GetFloatValueRequest {
+    fn insert_log_fields<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
         let debug_context_res = if log_enabled!(log::Level::Debug) {
             Some(self.context.clone())
         } else {
             None
         };
         message.extensions_mut().insert({
-            TraceInfo {
+            LogFieldsInfo {
                 // we can unwrap this since we can assume that the client would
                 // have failed already
                 rk: self.repo_key.clone().unwrap(),
@@ -101,15 +103,15 @@ impl InsertTrace for GetFloatValueRequest {
     }
 }
 
-impl InsertTrace for GetStringValueRequest {
-    fn insert_trace<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
+impl InsertLogFields for GetStringValueRequest {
+    fn insert_log_fields<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
         let debug_context_res = if log_enabled!(log::Level::Debug) {
             Some(self.context.clone())
         } else {
             None
         };
         message.extensions_mut().insert({
-            TraceInfo {
+            LogFieldsInfo {
                 // we can unwrap this since we can assume that the client would
                 // have failed already
                 rk: self.repo_key.clone().unwrap(),
@@ -122,15 +124,15 @@ impl InsertTrace for GetStringValueRequest {
     }
 }
 
-impl InsertTrace for GetJsonValueRequest {
-    fn insert_trace<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
+impl InsertLogFields for GetJsonValueRequest {
+    fn insert_log_fields<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
         let debug_context_res = if log_enabled!(log::Level::Debug) {
             Some(self.context.clone())
         } else {
             None
         };
         message.extensions_mut().insert({
-            TraceInfo {
+            LogFieldsInfo {
                 // we can unwrap this since we can assume that the client would
                 // have failed already
                 rk: self.repo_key.clone().unwrap(),
@@ -143,15 +145,15 @@ impl InsertTrace for GetJsonValueRequest {
     }
 }
 
-impl InsertTrace for GetProtoValueRequest {
-    fn insert_trace<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
+impl InsertLogFields for GetProtoValueRequest {
+    fn insert_log_fields<M>(&self, mut message: tonic::Response<M>) -> tonic::Response<M> {
         let debug_context_res = if log_enabled!(log::Level::Debug) {
             Some(self.context.clone())
         } else {
             None
         };
         message.extensions_mut().insert({
-            TraceInfo {
+            LogFieldsInfo {
                 // we can unwrap this since we can assume that the client would
                 // have failed already
                 rk: self.repo_key.clone().unwrap(),
@@ -165,7 +167,7 @@ impl InsertTrace for GetProtoValueRequest {
 }
 
 pub fn get_trace_string(ext: &http::Extensions) -> Option<String> {
-    ext.get::<TraceInfo>().map(|ti| {
+    ext.get::<LogFieldsInfo>().map(|ti| {
         let mut text = format!("{}/{}/{}", ti.rk.repo_name, ti.namespace, ti.feature);
         if let Some(debug_context) = &ti.debug_context_res {
             text = format!("{} context: {:?}", text, debug_context)

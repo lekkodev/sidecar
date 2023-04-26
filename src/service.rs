@@ -21,7 +21,7 @@ use crate::{
         GetProtoValueRequest, GetProtoValueResponse, GetStringValueRequest, GetStringValueResponse,
         RegisterRequest, RegisterResponse, Value,
     },
-    logging::InsertTrace,
+    logging::InsertLogFields,
     metrics::Metrics,
     store::Store,
     types::{self, convert_repo_key, FeatureRequestParams, APIKEY},
@@ -193,10 +193,9 @@ impl ConfigurationService for Service {
             namespace: inner.namespace.clone(),
             feature: inner.key.clone(),
         };
-        let result =
-            &self.get_value_local(params.clone(), &inner.context, apikey, FeatureType::Bool)?;
+        let result = &self.get_value_local(params, &inner.context, apikey, FeatureType::Bool)?;
 
-        Ok(inner.insert_trace(Response::new(GetBoolValueResponse {
+        Ok(inner.insert_log_fields(Response::new(GetBoolValueResponse {
             value: types::from_any::<bool>(result)
                 .map_err(|e| tonic::Status::internal(e.to_string()))?,
         })))
@@ -230,13 +229,13 @@ impl ConfigurationService for Service {
             feature: inner.key.clone(),
         };
         let i = types::from_any::<i64>(&self.get_value_local(
-            params.clone(),
+            params,
             &inner.context,
             apikey,
             FeatureType::Int,
         )?)
         .map_err(|e| tonic::Status::internal(e.to_string()))?;
-        Ok(inner.insert_trace(Response::new(GetIntValueResponse { value: i })))
+        Ok(inner.insert_log_fields(Response::new(GetIntValueResponse { value: i })))
     }
 
     async fn get_float_value(
@@ -268,13 +267,13 @@ impl ConfigurationService for Service {
         };
 
         let f = types::from_any::<f64>(&self.get_value_local(
-            params.clone(),
+            params,
             &inner.context,
             apikey,
             FeatureType::Float,
         )?)
         .map_err(|e| tonic::Status::internal(e.to_string()))?;
-        Ok(inner.insert_trace(Response::new(GetFloatValueResponse { value: f })))
+        Ok(inner.insert_log_fields(Response::new(GetFloatValueResponse { value: f })))
     }
 
     async fn get_string_value(
@@ -306,13 +305,13 @@ impl ConfigurationService for Service {
         };
 
         let s = types::from_any::<String>(&self.get_value_local(
-            params.clone(),
+            params,
             &inner.context,
             apikey,
             FeatureType::String,
         )?)
         .map_err(|e| tonic::Status::internal(e.to_string()))?;
-        Ok(inner.insert_trace(Response::new(GetStringValueResponse { value: s })))
+        Ok(inner.insert_log_fields(Response::new(GetStringValueResponse { value: s })))
     }
 
     async fn get_proto_value(
@@ -342,9 +341,8 @@ impl ConfigurationService for Service {
             feature: inner.key.clone(),
         };
 
-        let any =
-            self.get_value_local(params.clone(), &inner.context, apikey, FeatureType::Proto)?;
-        Ok(inner.insert_trace(Response::new(GetProtoValueResponse { value: Some(any) })))
+        let any = self.get_value_local(params, &inner.context, apikey, FeatureType::Proto)?;
+        Ok(inner.insert_log_fields(Response::new(GetProtoValueResponse { value: Some(any) })))
     }
 
     async fn get_json_value(
@@ -370,7 +368,7 @@ impl ConfigurationService for Service {
                     rk: convert_repo_key(
                         inner
                             .repo_key
-                    .as_ref()
+                            .as_ref()
                             .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
                     ),
                     namespace: inner.namespace.clone(),
@@ -382,7 +380,7 @@ impl ConfigurationService for Service {
             )?,
         )
         .map_err(|e| tonic::Status::internal(e.to_string()))?;
-        Ok(inner.insert_trace(Response::new(GetJsonValueResponse {
+        Ok(inner.insert_log_fields(Response::new(GetJsonValueResponse {
             value: serde_json::to_vec(&ValueWrapper(&v)).map_err(|e| {
                 Status::internal("failure serializing json ".to_owned() + &e.to_string())
             })?,

@@ -11,7 +11,6 @@ use sidecar::logging;
 use sidecar::metrics::Metrics;
 use sidecar::service::{Mode, Service};
 use sidecar::store::Store;
-use sidecar::types::FeatureRequestParams;
 use std::net::SocketAddr;
 use std::sync::Mutex;
 use tokio::signal::unix::SignalKind;
