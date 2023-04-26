@@ -28,6 +28,7 @@ pub struct Method {
 //   - this can probably done with an associated type for the trait
 // - using spans correctly
 // - using macro to not require the 6 copies of the function below
+// - using json_env_logger crate when configured
 struct LogFieldsInfo {
     rk: RepositoryKey,
     namespace: String,
