@@ -6,13 +6,14 @@ use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_client:
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_server::ConfigurationServiceServer;
 
 use hyper::{http::Request, Body};
-use log::log;
+use log::{error, log};
 use sidecar::logging;
 use sidecar::metrics::Metrics;
 use sidecar::service::{Mode, Service};
 use sidecar::store::Store;
 use std::net::SocketAddr;
 use std::sync::Mutex;
+use std::time::Duration;
 use tokio::signal::unix::SignalKind;
 use tonic::codegen::CompressionEncoding;
 use tonic::transport::{Server, Uri};
@@ -36,17 +37,26 @@ struct Args {
     /// Address to bind to on current host.
     bind_addr: String,
 
-    #[arg(value_enum, long, default_value_t)]
+    #[arg(value_enum, long, default_value_t, verbatim_doc_comment)]
     /// Mode can be one of:
-    /// default - initialize from a bootstrap, poll local state from remote and evaluate locally.
-    /// consistent - always evaluate using the latest value of a flag from remote.
-    /// static - operate only off of a bootstrap.
+    ///   default - initialize from a bootstrap, poll local state from remote and evaluate locally.
+    ///   consistent - always evaluate using the latest value of a flag from remote.
+    ///   static - operate only off of a bootstrap.{n}
     mode: Mode,
+
+    #[arg(short, long, value_parser=parse_duration, default_value="15s")]
+    /// How often to poll for a new version of a configuration repository.
+    /// If this duration is too short, Lekko may apply rate limits.
+    poll_internal: Duration,
 
     #[arg(short, long)]
     /// Absolute path to the directory on disk that contains the .git folder.
     /// Provide this flag to turn on bootstrap behavior.
     repo_path: Option<String>,
+}
+
+fn parse_duration(arg: &str) -> Result<std::time::Duration, humantime::DurationError> {
+    arg.parse::<humantime::Duration>().map(Into::into)
 }
 
 #[tokio::main]
@@ -107,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // to keep the sidecar up longer than its client process.
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
-    let store = Store::new(dist_client.clone(), bootstrap_data);
+    let store = Store::new(dist_client.clone(), bootstrap_data, args.poll_internal);
     let metrics = Metrics::new(dist_client);
     let service = ConfigurationServiceServer::new(Service {
         shutdown_tx: Mutex::new(Some(shutdown_tx)),
@@ -152,14 +162,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .recv()
                 .await;
             // wait on signal from deregister
-            println!("got sigterm, waiting for deregister before gracefully shutting down");
+            log!(
+                log::max_level().to_level().unwrap_or(log::Level::Warn),
+                "got sigterm, waiting for deregister before gracefully shutting down"
+            );
             match shutdown_rx.await {
                 Ok(()) => {}
                 Err(error) => {
-                    println!("error when shutting down: {error:?}")
+                    error!("error when shutting down: {error:?}")
                 }
             };
-            println!("got deregister, gracefully shutting down");
+            log!(
+                log::max_level().to_level().unwrap_or(log::Level::Warn),
+                "got deregister, gracefully shutting down"
+            );
             // shutdown metrics
         })
         .await?;
