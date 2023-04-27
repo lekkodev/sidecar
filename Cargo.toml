@@ -10,6 +10,7 @@ dashmap = "5.4"
 env_logger = "0.10"
 futures = "0.3.25"
 http = "0.2"
+humantime = "2"
 hyper = { version="0.14", features=["full"] }
 hyper-rustls = { version="0.23", features=["webpki-roots", "http2"] }
 itertools = "0.10.5"

@@ -3,6 +3,7 @@ use std::{
     path::Path,
 };
 
+use log::{debug, info, warn};
 use prost::Message;
 use sha1::Digest;
 use tonic::Status;
@@ -42,7 +43,8 @@ impl Bootstrap {
                 Ok(nsr) => nsr,
                 Err(e) => return Err(e),
             };
-        println!("git-sync commit sha {commit_sha:}");
+        // TODO also get owner_name/repo_name, maybe from the `.git`
+        info!("initialized bootstrap for {commit_sha:}");
         Ok(GetRepositoryContentsResponse {
             commit_sha,
             namespaces,
@@ -152,7 +154,10 @@ impl Bootstrap {
                         let feature_name = match filename.strip_suffix(".proto.bin") {
                             Some(a) => a,
                             None => {
-                                println!("malformed filename in gen/proto, skipping");
+                                warn!(
+                                    "malformed filename in {}/gen/proto, skipping",
+                                    dir_entry.path().to_str().unwrap_or("")
+                                );
                                 continue;
                             }
                         };
@@ -163,14 +168,16 @@ impl Bootstrap {
                             feature: match feature::v1beta1::Feature::decode(bytes.as_ref()) {
                                 Ok(d) => Some(d),
                                 Err(e) => {
-                                    println!("decode error! {e:?}");
                                     return Err(Status::internal(format!(
                                         "decode feature from git-sync: {e:?}",
                                     )));
                                 }
                             },
                         });
-                        println!("{feature_name:} [{:?} bytes]: sha {sha:}", bytes.len());
+                        debug!(
+                            "initialized {feature_name:} [{:?} bytes]: sha {sha:}",
+                            bytes.len()
+                        );
                     }
                 }
             } else {

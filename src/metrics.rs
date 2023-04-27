@@ -4,6 +4,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
 use itertools::Itertools;
+use log::{error, warn};
 use tokio::{
     select, spawn,
     sync::mpsc::{channel, Receiver, Sender},
@@ -92,7 +93,7 @@ impl Metrics {
             event,
         });
         if let Err(e) = result {
-            println!("failed to send metrics event on mpsc channel {e:?}",);
+            warn!("failed to send metrics to internal metrics handler {e:?}");
         }
     }
 
@@ -115,7 +116,7 @@ impl Metrics {
                 },
                 Some(result) = futures.next() => {
                     if let Err(e) = result {
-                        println!("error handling send flag evaluation future {e:?}");
+                        error!("error handling send flag evaluation future {e:?}");
                     }
                 },
                 else => break,

@@ -18,6 +18,7 @@ use crate::{
 };
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
+use log::{error, info, warn};
 use prost::Message;
 use tonic::{
     body::BoxBody,
@@ -77,6 +78,7 @@ async fn poll_loop(
     rx: Receiver<ConcurrentState>,
     dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
     state: Arc<RwLock<ConcurrentState>>,
+    poll_duration: Duration,
 ) {
     // We begin the loop by waiting for a register call.
     // Once the register call comes through, we can start fetching on a poll.
@@ -85,9 +87,12 @@ async fn poll_loop(
     let conn_creds = match rx.await {
         Ok(data) => {
             let version = data.repo_version.clone();
+            info!(
+                "got register message, starting polling for {}/{} from version: {version}",
+                &data.conn_creds.repo_key.owner_name, &data.conn_creds.repo_key.repo_name
+            );
             let mut state_guard = state.write().unwrap();
             *state_guard = data;
-            println!("got register message, starting polling from version: {version}",);
             state_guard.conn_creds.clone()
         }
         Err(err) => {
@@ -96,8 +101,7 @@ async fn poll_loop(
         }
     };
 
-    // TODO: make configurable.
-    let mut interval = tokio::time::interval(Duration::from_millis(1000));
+    let mut interval = tokio::time::interval(poll_duration);
     loop {
         interval.tick().await;
         // fetch version
@@ -106,7 +110,7 @@ async fn poll_loop(
                 Ok(v) => v,
                 Err(err) => {
                     // TODO: exp backoff when we have errors
-                    println!("got an error when fetching version {err:?}");
+                    warn!("got an error when fetching version {err:?}");
                     continue;
                 }
             };
@@ -119,7 +123,7 @@ async fn poll_loop(
             // release read lock to fetch data
         };
 
-        println!("polled for new version: {new_version}, will fetch from remote",);
+        info!("found new version: {new_version}, fetching");
 
         match get_repo_contents_remote(
             dist_client.clone(),
@@ -135,11 +139,10 @@ async fn poll_loop(
                     state_guard.repo_version = res.commit_sha;
                     // drop state_guard
                 }
-                println!("updated to new version: {new_version}");
             }
             Err(err) => {
                 // This is a problem, error loudly.
-                println!("error encountered when fetching full repository state: {err:?}",);
+                error!("error encountered when fetching full repository state: {err:?}",);
             }
         }
     }
@@ -185,7 +188,7 @@ async fn get_repo_version_remote(
     >,
     conn_creds: ConnectionCredentials,
 ) -> Result<String, tonic::Status> {
-    match dist_client
+    dist_client
         .get_repository_version(add_api_key(
             GetRepositoryVersionRequest {
                 repo_key: Some(conn_creds.repo_key),
@@ -194,14 +197,7 @@ async fn get_repo_version_remote(
             conn_creds.api_key,
         ))
         .await
-        .map(|resp| resp.into_inner())
-    {
-        Ok(resp) => Ok(resp.commit_sha),
-        Err(err) => {
-            println!("error fetching repo version from distribution service {err:?}",);
-            Err(err)
-        }
-    }
+        .map(|resp| resp.into_inner().commit_sha)
 }
 
 async fn get_repo_contents_remote(
@@ -210,20 +206,10 @@ async fn get_repo_contents_remote(
     >,
     request: Request<GetRepositoryContentsRequest>,
 ) -> Result<GetRepositoryContentsResponse, tonic::Status> {
-    match dist_client
+    dist_client
         .get_repository_contents(request)
         .await
         .map(|resp| resp.into_inner())
-    {
-        Ok(resp) => {
-            println!("received contents for commit sha {}", resp.commit_sha);
-            Ok(resp)
-        }
-        Err(err) => {
-            println!("error fetching feature from distribution service {err:?}",);
-            Err(err)
-        }
-    }
 }
 
 impl Store {
@@ -232,6 +218,7 @@ impl Store {
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
         bootstrap_data: Option<GetRepositoryContentsResponse>,
+        poll_interval: Duration,
     ) -> Self {
         let (tx, rx) = tokio::sync::oneshot::channel::<ConcurrentState>();
         let state = Arc::new(RwLock::new(match bootstrap_data {
@@ -255,7 +242,12 @@ impl Store {
             },
         }));
         // TODO: worry about this join handle.
-        tokio::spawn(poll_loop(rx, dist_client.clone(), state.clone()));
+        tokio::spawn(poll_loop(
+            rx,
+            dist_client.clone(),
+            state.clone(),
+            poll_interval,
+        ));
         Self {
             dist_client,
             state,
