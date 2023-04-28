@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     ops::DerefMut,
     sync::{Arc, Mutex, RwLock},
-    time::Duration,
+    time::Duration, path::Path,
 };
 
 use crate::{
@@ -14,19 +14,23 @@ use crate::{
         },
         feature::v1beta1::Feature,
     },
-    types::{FeatureRequestParams, APIKEY},
+    types::{FeatureRequestParams, APIKEY}, service::Mode,
 };
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
+use itertools::any;
+use lazy_static::lazy_static;
 use log::{error, info, warn};
+use notify::{RecursiveMode, Watcher, PollWatcher, event::{CreateKind, ModifyKind, RemoveKind}, EventKind::{Create, Modify, Remove}, Event, Error};
 use prost::Message;
+use regex::Regex;
 use tonic::{
     body::BoxBody,
     metadata::{Ascii, MetadataValue},
     Request,
 };
 
-use tokio::sync::oneshot::{Receiver, Sender};
+use tokio::{sync::oneshot::{Receiver, Sender}, task::JoinHandle};
 
 // Store acts as the abstraction for the storage and retrieval of all features.
 // Internally there is a state machine that has two states: registered and unregistered.
@@ -40,6 +44,9 @@ pub struct Store {
     dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
     state: Arc<RwLock<ConcurrentState>>,
     initialize_tx: Mutex<Option<Sender<ConcurrentState>>>,
+    // keeping the join handle around keeps the poll watcher in scope,
+    // which is necessary to receive watch events from the filesystem.
+    _join_handle: Option<JoinHandle<PollWatcher>>
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -72,6 +79,53 @@ pub struct FeatureData {
     pub commit_sha: String,
     pub feature_sha: String,
     pub feature: Feature,
+}
+
+lazy_static! {
+    static ref RG: Regex = match Regex::new(r"^.*/gen/proto/[\w.-]+\.proto\.bin$") {
+        Ok(r) => r,
+        Err(e) => panic!("failed to initialize regex {e:}")
+    };
+}
+
+async fn fs_watch(path: String) -> PollWatcher {
+    info!("STARTING WATCHER");
+    let mut watcher = match notify::PollWatcher::new(
+        |res: Result<Event, Error>| match res {
+            Ok(event) => {
+                match event.kind {
+                    Create(_) | Modify(_) | Remove(_) => {
+                        if any(&event.paths, |s| {
+                            match s.to_owned().into_os_string().into_string() {
+                                Ok(st) => RG.to_owned().is_match(&st),
+                                Err(e) => {
+                                    warn!("failed to convert path {e:?} to string");
+                                    false
+                                },
+                            }
+                        }) {
+                            info!("WOW: event: {:?}", event);
+                            
+                        }   
+                    }
+                    _ => ()
+                }
+            },
+            Err(e) => error!("fs watch error: {:?}", e),
+        },
+        notify::Config::default().with_compare_contents(true).with_poll_interval(Duration::from_secs(1)),
+    ) {
+        Ok(w) => w,
+        Err(e) => {
+            panic!("error initializing poll watcher {e:}")
+        }
+    };
+    match watcher.watch(Path::new(&path), RecursiveMode::Recursive) {
+        Err(e) => panic!("error watching path {path}: {e:}"),
+        _ => (),
+    }
+    info!("STARTED WATCHER");
+    watcher
 }
 
 async fn poll_loop(
@@ -219,6 +273,8 @@ impl Store {
         >,
         bootstrap_data: Option<GetRepositoryContentsResponse>,
         poll_interval: Duration,
+        mode: Mode,
+        repo_path: Option<String>
     ) -> Self {
         let (tx, rx) = tokio::sync::oneshot::channel::<ConcurrentState>();
         let state = Arc::new(RwLock::new(match bootstrap_data {
@@ -242,16 +298,29 @@ impl Store {
             },
         }));
         // TODO: worry about this join handle.
-        tokio::spawn(poll_loop(
-            rx,
-            dist_client.clone(),
-            state.clone(),
-            poll_interval,
-        ));
+        let jh = match mode {
+            Mode::Static => {
+                let path = match repo_path {
+                    None => panic!("no repo path provided for sidecar configured to be static"),
+                    Some(p) => p,
+                };
+                Some(tokio::spawn(fs_watch(path)))
+            },
+            _ => {
+                tokio::spawn(poll_loop(
+                    rx,
+                    dist_client.clone(),
+                    state.clone(),
+                    poll_interval,
+                ));
+                None
+            }
+        };
         Self {
             dist_client,
             state,
             initialize_tx: Mutex::new(Some(tx)),
+            _join_handle: jh,
         }
     }
 

@@ -23,7 +23,7 @@ RUN apt-get update && (cat /apt_deps.txt | xargs apt-get install -y)
 
 RUN rustup target add $(cat /rust_target.txt)
 
-RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build --release --target $(cat /rust_target.txt)
+RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build --target $(cat /rust_target.txt)
 
 COPY src /workspace/src
 
@@ -31,9 +31,11 @@ COPY src /workspace/src
 RUN touch /workspace/src/lib.rs
 
 # This is the actual application build.
-RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build --release --target $(cat /rust_target.txt)
+RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build --target $(cat /rust_target.txt)
 
-RUN cp target/$(cat /rust_target.txt)/release/sidecar .
+# RUN echo $(ls -lash target/$(cat /rust_target.txt)/debug)
+
+RUN cp target/$(cat /rust_target.txt)/debug/sidecar .
 
 FROM --platform=${TARGETPLATFORM} debian:bullseye-slim
 

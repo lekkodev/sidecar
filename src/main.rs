@@ -88,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     );
 
-    let bootstrap_data = match args.repo_path {
+    let bootstrap_data = match &args.repo_path {
         None => {
             if matches!(args.mode, Mode::Static) {
                 panic!("no bootstrap provided for sidecar configured to be static")
@@ -96,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
         Some(rp) => {
-            let mut bootstrap = Bootstrap::new(rp);
+            let mut bootstrap = Bootstrap::new(rp.to_owned());
             Some(
                 bootstrap
                     .load()
@@ -117,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // to keep the sidecar up longer than its client process.
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
-    let store = Store::new(dist_client.clone(), bootstrap_data, args.poll_internal);
+    let store = Store::new(dist_client.clone(), bootstrap_data, args.poll_internal, args.mode.to_owned(), args.repo_path);
     let metrics = Metrics::new(dist_client);
     let service = ConfigurationServiceServer::new(Service {
         shutdown_tx: Mutex::new(Some(shutdown_tx)),
