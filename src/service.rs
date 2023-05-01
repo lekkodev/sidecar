@@ -194,6 +194,7 @@ impl ConfigurationService for Service {
             feature: inner.key.clone(),
         };
         let result = &self.get_value_local(params, &inner.context, apikey, FeatureType::Bool)?;
+
         Ok(inner.insert_log_fields(Response::new(GetBoolValueResponse {
             value: types::from_any::<bool>(result)
                 .map_err(|e| tonic::Status::internal(e.to_string()))?,

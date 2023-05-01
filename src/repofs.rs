@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use log::{debug, info, warn};
+use log::{debug, warn};
 use prost::Message;
 use sha1::Digest;
 use tonic::Status;
@@ -14,9 +14,9 @@ use crate::gen::mod_cli::lekko::{
     feature,
 };
 
-// Helps the sidecar bootsrap feature flags using an on-disk clone of
+// Helps the sidecar load feature flags from an on-disk clone of
 // the config repo.
-pub struct Bootstrap {
+pub struct RepoFS {
     // Path to the directory on disk that contains the .git folder.
     repo_path: String,
     // Path to the directory on disk that contains the repo contents (lekko.root.yaml).
@@ -26,7 +26,7 @@ pub struct Bootstrap {
     contents_path: Option<String>,
 }
 
-impl Bootstrap {
+impl RepoFS {
     pub fn new(repo_path: String) -> Self {
         Self {
             repo_path,
@@ -44,7 +44,6 @@ impl Bootstrap {
                 Err(e) => return Err(e),
             };
         // TODO also get owner_name/repo_name, maybe from the `.git`
-        info!("initialized bootstrap for {commit_sha:}");
         Ok(GetRepositoryContentsResponse {
             commit_sha,
             namespaces,

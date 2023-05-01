@@ -7,7 +7,6 @@ use std::{
 };
 
 use crate::{
-    bootstrap::Bootstrap,
     gen::mod_cli::lekko::{
         backend::v1beta1::{
             distribution_service_client::DistributionServiceClient, DeregisterClientRequest,
@@ -16,6 +15,7 @@ use crate::{
         },
         feature::v1beta1::Feature,
     },
+    repofs::RepoFS,
     service::Mode,
     types::{FeatureRequestParams, APIKEY},
 };
@@ -92,14 +92,14 @@ pub struct FeatureData {
 }
 
 lazy_static! {
-    static ref RG: Regex = match Regex::new(r"^.*/gen/proto/[\w.-]+\.proto\.bin$") {
+    // Lazily initialize static regex so we don't need to compile it repeatedly
+    static ref PROTO_BIN_FILE: Regex = match Regex::new(r"^.*/gen/proto/[\w.-]+\.proto\.bin$") {
         Ok(r) => r,
         Err(e) => panic!("failed to initialize regex {e:}"),
     };
 }
 
 async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatcher {
-    info!("STARTING WATCHER");
     let watch_path = path.clone();
     let mut watcher = match notify::PollWatcher::new(
         move |res: Result<Event, Error>| match res {
@@ -108,24 +108,25 @@ async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatc
                     Create(_) | Modify(_) | Remove(_) => {
                         if any(&event.paths, |s| {
                             match s.to_owned().into_os_string().into_string() {
-                                Ok(st) => RG.to_owned().is_match(&st),
+                                Ok(st) => PROTO_BIN_FILE.to_owned().is_match(&st),
                                 Err(e) => {
                                     warn!("failed to convert path {e:?} to string");
-                                    false
+                                    false // don't reload contents for paths that aren't unicode
                                 }
                             }
                         }) {
-                            info!("WOW: event: {:?}", event);
                             let path = path.clone();
-                            match Bootstrap::new(path).load() {
+                            match RepoFS::new(path).load() {
                                 Ok(res) => {
-                                    {
-                                        // obtain lock again to replace data
-                                        let mut state_guard = state.write().unwrap();
-                                        state_guard.cache = create_feature_store(res.namespaces);
-                                        state_guard.repo_version = res.commit_sha;
-                                        // drop state_guard
-                                    }
+                                    // obtain lock again to replace data
+                                    let mut state_guard = state.write().unwrap();
+                                    state_guard.cache = create_feature_store(res.namespaces);
+                                    state_guard.repo_version = res.commit_sha.to_owned();
+                                    info!(
+                                        "loaded repo contents for commit sha {:}",
+                                        res.commit_sha
+                                    );
+                                    // drop state_guard
                                 }
                                 Err(e) => {
                                     warn!("failed to load repo contents from filesystem: {e:}")
@@ -150,7 +151,6 @@ async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatc
     if let Err(e) = watcher.watch(Path::new(&watch_path), RecursiveMode::Recursive) {
         panic!("error watching path {watch_path}: {e:}")
     }
-    info!("STARTED WATCHER");
     watcher
 }
 
@@ -216,7 +216,8 @@ async fn poll_loop(
                     // obtain lock again to replace data
                     let mut state_guard = state.write().unwrap();
                     state_guard.cache = create_feature_store(res.namespaces);
-                    state_guard.repo_version = res.commit_sha;
+                    state_guard.repo_version = res.commit_sha.to_owned();
+                    info!("loaded repo contents for commit sha {:}", res.commit_sha);
                     // drop state_guard
                 }
             }
@@ -323,7 +324,6 @@ impl Store {
                 },
             },
         }));
-        // TODO: worry about this join handle.
         let jh = match mode {
             Mode::Static => {
                 let path = match repo_path {
@@ -333,6 +333,7 @@ impl Store {
                 Some(tokio::spawn(fs_watch(path, state.clone())))
             }
             _ => {
+                // TODO: worry about this join handle.
                 tokio::spawn(poll_loop(
                     rx,
                     dist_client.clone(),
