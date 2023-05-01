@@ -147,8 +147,8 @@ async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatc
             panic!("error initializing poll watcher {e:}")
         }
     };
-    if let Err(e) = watcher.watch(Path::new(&watch_path), RecursiveMode::Recursive) { 
-        panic!("error watching path {watch_path}: {e:}") 
+    if let Err(e) = watcher.watch(Path::new(&watch_path), RecursiveMode::Recursive) {
+        panic!("error watching path {watch_path}: {e:}")
     }
     info!("STARTED WATCHER");
     watcher

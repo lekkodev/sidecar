@@ -151,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         info!(
                             "response {} ms {}",
                             latency.as_millis(),
-                            extra_text.unwrap_or_else(|| "".to_string()),
+                            extra_text.unwrap_or_default(),
                         );
                     },
                 )

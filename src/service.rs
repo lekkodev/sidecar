@@ -2,7 +2,7 @@ use std::{collections::HashMap, ops::DerefMut, sync::Mutex};
 
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
-use log::{error};
+use log::error;
 use prost_types::{value::Kind, Any};
 use tonic::{
     body::BoxBody,
