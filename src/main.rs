@@ -117,7 +117,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // to keep the sidecar up longer than its client process.
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
-    let store = Store::new(dist_client.clone(), bootstrap_data, args.poll_internal, args.mode.to_owned(), args.repo_path);
+    let store = Store::new(
+        dist_client.clone(),
+        bootstrap_data,
+        args.poll_internal,
+        args.mode.to_owned(),
+        args.repo_path,
+    );
     let metrics = Metrics::new(dist_client);
     let service = ConfigurationServiceServer::new(Service {
         shutdown_tx: Mutex::new(Some(shutdown_tx)),
@@ -145,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         info!(
                             "response {} ms {}",
                             latency.as_millis(),
-                            extra_text.unwrap_or("".to_string()),
+                            extra_text.unwrap_or_else(|| "".to_string()),
                         );
                     },
                 )

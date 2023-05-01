@@ -1,11 +1,13 @@
 use std::{
     collections::HashMap,
     ops::DerefMut,
+    path::Path,
     sync::{Arc, Mutex, RwLock},
-    time::Duration, path::Path,
+    time::Duration,
 };
 
 use crate::{
+    bootstrap::Bootstrap,
     gen::mod_cli::lekko::{
         backend::v1beta1::{
             distribution_service_client::DistributionServiceClient, DeregisterClientRequest,
@@ -14,14 +16,19 @@ use crate::{
         },
         feature::v1beta1::Feature,
     },
-    types::{FeatureRequestParams, APIKEY}, service::Mode,
+    service::Mode,
+    types::{FeatureRequestParams, APIKEY},
 };
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
 use itertools::any;
 use lazy_static::lazy_static;
 use log::{error, info, warn};
-use notify::{RecursiveMode, Watcher, PollWatcher, event::{CreateKind, ModifyKind, RemoveKind}, EventKind::{Create, Modify, Remove}, Event, Error};
+use notify::{
+    Error, Event,
+    EventKind::{Create, Modify, Remove},
+    PollWatcher, RecursiveMode, Watcher,
+};
 use prost::Message;
 use regex::Regex;
 use tonic::{
@@ -30,7 +37,10 @@ use tonic::{
     Request,
 };
 
-use tokio::{sync::oneshot::{Receiver, Sender}, task::JoinHandle};
+use tokio::{
+    sync::oneshot::{Receiver, Sender},
+    task::JoinHandle,
+};
 
 // Store acts as the abstraction for the storage and retrieval of all features.
 // Internally there is a state machine that has two states: registered and unregistered.
@@ -46,7 +56,7 @@ pub struct Store {
     initialize_tx: Mutex<Option<Sender<ConcurrentState>>>,
     // keeping the join handle around keeps the poll watcher in scope,
     // which is necessary to receive watch events from the filesystem.
-    _join_handle: Option<JoinHandle<PollWatcher>>
+    _join_handle: Option<JoinHandle<PollWatcher>>,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -84,14 +94,15 @@ pub struct FeatureData {
 lazy_static! {
     static ref RG: Regex = match Regex::new(r"^.*/gen/proto/[\w.-]+\.proto\.bin$") {
         Ok(r) => r,
-        Err(e) => panic!("failed to initialize regex {e:}")
+        Err(e) => panic!("failed to initialize regex {e:}"),
     };
 }
 
-async fn fs_watch(path: String) -> PollWatcher {
+async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatcher {
     info!("STARTING WATCHER");
+    let watch_path = path.clone();
     let mut watcher = match notify::PollWatcher::new(
-        |res: Result<Event, Error>| match res {
+        move |res: Result<Event, Error>| match res {
             Ok(event) => {
                 match event.kind {
                     Create(_) | Modify(_) | Remove(_) => {
@@ -101,28 +112,43 @@ async fn fs_watch(path: String) -> PollWatcher {
                                 Err(e) => {
                                     warn!("failed to convert path {e:?} to string");
                                     false
-                                },
+                                }
                             }
                         }) {
                             info!("WOW: event: {:?}", event);
-                            
-                        }   
+                            let path = path.clone();
+                            match Bootstrap::new(path).load() {
+                                Ok(res) => {
+                                    {
+                                        // obtain lock again to replace data
+                                        let mut state_guard = state.write().unwrap();
+                                        state_guard.cache = create_feature_store(res.namespaces);
+                                        state_guard.repo_version = res.commit_sha;
+                                        // drop state_guard
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!("failed to load repo contents from filesystem: {e:}")
+                                }
+                            };
+                        }
                     }
-                    _ => ()
+                    _ => (),
                 }
-            },
+            }
             Err(e) => error!("fs watch error: {:?}", e),
         },
-        notify::Config::default().with_compare_contents(true).with_poll_interval(Duration::from_secs(1)),
+        notify::Config::default()
+            .with_compare_contents(true)
+            .with_poll_interval(Duration::from_secs(1)),
     ) {
         Ok(w) => w,
         Err(e) => {
             panic!("error initializing poll watcher {e:}")
         }
     };
-    match watcher.watch(Path::new(&path), RecursiveMode::Recursive) {
-        Err(e) => panic!("error watching path {path}: {e:}"),
-        _ => (),
+    if let Err(e) = watcher.watch(Path::new(&watch_path), RecursiveMode::Recursive) { 
+        panic!("error watching path {watch_path}: {e:}") 
     }
     info!("STARTED WATCHER");
     watcher
@@ -274,7 +300,7 @@ impl Store {
         bootstrap_data: Option<GetRepositoryContentsResponse>,
         poll_interval: Duration,
         mode: Mode,
-        repo_path: Option<String>
+        repo_path: Option<String>,
     ) -> Self {
         let (tx, rx) = tokio::sync::oneshot::channel::<ConcurrentState>();
         let state = Arc::new(RwLock::new(match bootstrap_data {
@@ -304,8 +330,8 @@ impl Store {
                     None => panic!("no repo path provided for sidecar configured to be static"),
                     Some(p) => p,
                 };
-                Some(tokio::spawn(fs_watch(path)))
-            },
+                Some(tokio::spawn(fs_watch(path, state.clone())))
+            }
             _ => {
                 tokio::spawn(poll_loop(
                     rx,

@@ -1,8 +1,8 @@
-use std::{collections::HashMap, ops::DerefMut, sync::Mutex, fs};
+use std::{collections::HashMap, ops::DerefMut, sync::Mutex};
 
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
-use log::{error, info};
+use log::{error};
 use prost_types::{value::Kind, Any};
 use tonic::{
     body::BoxBody,
@@ -194,8 +194,6 @@ impl ConfigurationService for Service {
             feature: inner.key.clone(),
         };
         let result = &self.get_value_local(params, &inner.context, apikey, FeatureType::Bool)?;
-        info!("read example.star from internal config repo:\n\t{:?}", String::from_utf8(fs::read("/root/internal/default/example.star")?));
-
         Ok(inner.insert_log_fields(Response::new(GetBoolValueResponse {
             value: types::from_any::<bool>(result)
                 .map_err(|e| tonic::Status::internal(e.to_string()))?,
