@@ -118,15 +118,17 @@ async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatc
                             let path = path.clone();
                             match RepoFS::new(path).load() {
                                 Ok(res) => {
-                                    // obtain lock again to replace data
-                                    let mut state_guard = state.write().unwrap();
-                                    state_guard.cache = create_feature_store(res.namespaces);
-                                    state_guard.repo_version = res.commit_sha.to_owned();
+                                    {
+                                        // obtain lock again to replace data
+                                        let mut state_guard = state.write().unwrap();
+                                        state_guard.cache = create_feature_store(res.namespaces);
+                                        state_guard.repo_version = res.commit_sha.to_owned();
+                                        // drop state_guard
+                                    }
                                     info!(
                                         "loaded repo contents for commit sha {:}",
                                         res.commit_sha
                                     );
-                                    // drop state_guard
                                 }
                                 Err(e) => {
                                     warn!("failed to load repo contents from filesystem: {e:}")
@@ -140,7 +142,7 @@ async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatc
             Err(e) => error!("fs watch error: {:?}", e),
         },
         notify::Config::default()
-            .with_compare_contents(true)
+            .with_compare_contents(false)
             .with_poll_interval(Duration::from_secs(1)),
     ) {
         Ok(w) => w,
@@ -217,9 +219,9 @@ async fn poll_loop(
                     let mut state_guard = state.write().unwrap();
                     state_guard.cache = create_feature_store(res.namespaces);
                     state_guard.repo_version = res.commit_sha.to_owned();
-                    info!("loaded repo contents for commit sha {:}", res.commit_sha);
                     // drop state_guard
                 }
+                info!("loaded repo contents for commit sha {:}", res.commit_sha);
             }
             Err(err) => {
                 // This is a problem, error loudly.
@@ -324,6 +326,8 @@ impl Store {
                 },
             },
         }));
+        // Depending on the mode, we will either subscribe to dynamic updates
+        // from the filesystem (static mode), or from Lekko backend (default mode).
         let jh = match mode {
             Mode::Static => {
                 let path = match repo_path {
