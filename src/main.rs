@@ -1,9 +1,9 @@
 use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
-use sidecar::bootstrap::Bootstrap;
 use sidecar::gen::mod_cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_server::ConfigurationServiceServer;
+use sidecar::repofs::RepoFS;
 
 use hyper::{http::Request, Body};
 use log::{error, log};
@@ -41,7 +41,7 @@ struct Args {
     /// Mode can be one of:
     ///   default - initialize from a bootstrap, poll local state from remote and evaluate locally.
     ///   consistent - always evaluate using the latest value of a flag from remote.
-    ///   static - operate only off of a bootstrap.{n}
+    ///   static - operate off of a config repo found on disk at repo_path.{n}
     mode: Mode,
 
     #[arg(short, long, value_parser=parse_duration, default_value="15s")]
@@ -51,7 +51,8 @@ struct Args {
 
     #[arg(short, long)]
     /// Absolute path to the directory on disk that contains the .git folder.
-    /// Provide this flag to turn on bootstrap behavior.
+    /// This flag is required for static mode, and optional for default mode
+    /// if bootstrap behavior is required.
     repo_path: Option<String>,
 }
 
@@ -88,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     );
 
-    let bootstrap_data = match args.repo_path {
+    let bootstrap_data = match &args.repo_path {
         None => {
             if matches!(args.mode, Mode::Static) {
                 panic!("no bootstrap provided for sidecar configured to be static")
@@ -96,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
         Some(rp) => {
-            let mut bootstrap = Bootstrap::new(rp);
+            let mut bootstrap = RepoFS::new(rp.to_owned());
             Some(
                 bootstrap
                     .load()
@@ -117,7 +118,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // to keep the sidecar up longer than its client process.
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
-    let store = Store::new(dist_client.clone(), bootstrap_data, args.poll_internal);
+    let store = Store::new(
+        dist_client.clone(),
+        bootstrap_data,
+        args.poll_internal,
+        args.mode.to_owned(),
+        args.repo_path,
+    );
     let metrics = Metrics::new(dist_client);
     let service = ConfigurationServiceServer::new(Service {
         shutdown_tx: Mutex::new(Some(shutdown_tx)),
@@ -145,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         info!(
                             "response {} ms {}",
                             latency.as_millis(),
-                            extra_text.unwrap_or("".to_string()),
+                            extra_text.unwrap_or_default(),
                         );
                     },
                 )
