@@ -1,11 +1,19 @@
 use prost::{DecodeError, Message};
 use prost_types::Any;
+use tonic::metadata::{MetadataValue, Ascii};
 
 use crate::gen::mod_cli::lekko::backend::v1beta1::RepositoryKey;
 use crate::gen::mod_sdk::lekko::client::v1beta1::RepositoryKey as PublicRepositoryKey;
 
 // Key that the lekko api key is stored under in rpc headers.
 pub const APIKEY: &str = "apikey";
+
+#[derive(Clone)]
+pub struct ConnectionCredentials {
+    repo_key: RepositoryKey,
+    api_key: MetadataValue<Ascii>,
+    session_key: String,
+}
 
 // Contains all parameters needed to fetch a feature.
 #[derive(Debug, Clone)]

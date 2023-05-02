@@ -4,5 +4,6 @@ pub mod logging;
 pub mod metrics;
 pub mod repofs;
 pub mod service;
+pub mod state;
 pub mod store;
 pub mod types;

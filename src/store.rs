@@ -17,7 +17,7 @@ use crate::{
     },
     repofs::RepoFS,
     service::Mode,
-    types::{FeatureRequestParams, APIKEY},
+    types::{FeatureRequestParams, APIKEY}, state::{StateStore, StateMachine},
 };
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
@@ -52,8 +52,8 @@ use tokio::{
 // await's. This is enforced by the compiler, but just something to keep in mind.
 pub struct Store {
     dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
-    state: Arc<RwLock<ConcurrentState>>,
-    initialize_tx: Mutex<Option<Sender<ConcurrentState>>>,
+    config: Arc<RwLock<ConfigState>>,
+    state_store: StateStore,
     // keeping the join handle around keeps the poll watcher in scope,
     // which is necessary to receive watch events from the filesystem.
     _join_handle: Option<JoinHandle<PollWatcher>>,
@@ -70,19 +70,11 @@ struct FeatureInfo {
     version: String,
 }
 
-#[derive(Clone)]
-struct ConnectionCredentials {
-    repo_key: RepositoryKey,
-    api_key: MetadataValue<Ascii>,
-    session_key: String,
-}
-
 type FeatureStore = HashMap<FeatureKey, FeatureInfo>;
 
-struct ConcurrentState {
+struct ConfigState {
     cache: FeatureStore,
     repo_version: String,
-    conn_creds: ConnectionCredentials,
 }
 
 pub struct FeatureData {
@@ -99,7 +91,7 @@ lazy_static! {
     };
 }
 
-async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatcher {
+async fn fs_watch(path: String, state: Arc<RwLock<ConfigState>>) -> PollWatcher {
     let watch_path = path.clone();
     let mut watcher = match notify::PollWatcher::new(
         move |res: Result<Event, Error>| match res {
@@ -157,25 +149,26 @@ async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatc
 }
 
 async fn poll_loop(
-    rx: Receiver<ConcurrentState>,
     dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
-    state: Arc<RwLock<ConcurrentState>>,
+    config: Arc<RwLock<ConfigState>>,
+    state_store: StateStore,
     poll_duration: Duration,
 ) {
     // We begin the loop by waiting for a register call.
     // Once the register call comes through, we can start fetching on a poll.
     //
     // Keep conn_creds around to not have to read it from concurrent state all the time.
-    let conn_creds = match rx.await {
+
+    let mut rx = state_store.notify();
+    match rx.wait_for(|state| matches!(state, StateMachine::Active(_) | StateMachine::Shutdown)).await {
         Ok(data) => {
             let version = data.repo_version.clone();
             info!(
                 "got register message, starting polling for {}/{} from version: {version}",
                 &data.conn_creds.repo_key.owner_name, &data.conn_creds.repo_key.repo_name
             );
-            let mut state_guard = state.write().unwrap();
+            let mut state_guard = config.write().unwrap();
             *state_guard = data;
-            state_guard.conn_creds.clone()
         }
         Err(err) => {
             // TODO: handle panics better.
@@ -295,37 +288,28 @@ async fn get_repo_contents_remote(
         .map(|resp| resp.into_inner())
 }
 
-impl Store {
+impl ConfigStore {
     pub fn new(
         dist_client: DistributionServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
         bootstrap_data: Option<GetRepositoryContentsResponse>,
+	state_store: StateStore,
         poll_interval: Duration,
         mode: Mode,
         repo_path: Option<String>,
     ) -> Self {
-        let (tx, rx) = tokio::sync::oneshot::channel::<ConcurrentState>();
-        let state = Arc::new(RwLock::new(match bootstrap_data {
-            None => ConcurrentState {
+        let config = Arc::new(RwLock::new(match bootstrap_data {
+            None => ConfigState {
                 cache: HashMap::new(),
                 repo_version: "".to_string(),
-                conn_creds: ConnectionCredentials {
-                    repo_key: RepositoryKey::default(),
-                    api_key: MetadataValue::from_static(""),
-                    session_key: "".to_string(),
-                },
             },
-            Some(contents) => ConcurrentState {
+            Some(contents) => ConfigState {
                 cache: create_feature_store(contents.namespaces),
                 repo_version: contents.commit_sha,
-                conn_creds: ConnectionCredentials {
-                    repo_key: RepositoryKey::default(),
-                    api_key: MetadataValue::from_static(""),
-                    session_key: "".to_string(),
-                },
             },
         }));
+
         // Depending on the mode, we will either subscribe to dynamic updates
         // from the filesystem (static mode), or from Lekko backend (default mode).
         let jh = match mode {
@@ -338,19 +322,19 @@ impl Store {
             }
             _ => {
                 // TODO: worry about this join handle.
-                tokio::spawn(poll_loop(
-                    rx,
-                    dist_client.clone(),
-                    state.clone(),
-                    poll_interval,
-                ));
+		tokio::spawn(poll_loop(
+		    dist_client.clone(),
+		    config.clone(),
+		    state_store.clone(),
+		    poll_interval,
+		));
                 None
             }
         };
         Self {
             dist_client,
-            state,
-            initialize_tx: Mutex::new(Some(tx)),
+	    config,
+            state_store,
             _join_handle: jh,
         }
     }
@@ -425,14 +409,9 @@ impl Store {
         let mut guard = self.initialize_tx.lock().unwrap();
         match guard.deref_mut().take() {
             Some(sender) => sender
-                .send(ConcurrentState {
+                .send(ConfigState {
                     cache: create_feature_store(success_resp.namespaces),
                     repo_version: success_resp.commit_sha,
-                    conn_creds: ConnectionCredentials {
-                        repo_key,
-                        api_key,
-                        session_key,
-                    },
                 })
                 .map_err(|_| {
                     tonic::Status::internal(
@@ -447,10 +426,9 @@ impl Store {
     }
 
     pub fn get_feature_local(&self, request: FeatureRequestParams) -> Option<FeatureData> {
-        let ConcurrentState {
+        let ConfigState {
             cache,
             repo_version,
-            conn_creds: _,
         } = &*self.state.read().unwrap();
         return cache
             .get(&FeatureKey {
