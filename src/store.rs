@@ -1,23 +1,22 @@
 use std::{
     collections::HashMap,
-    ops::DerefMut,
     path::Path,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
     time::Duration,
 };
 
 use crate::{
     gen::mod_cli::lekko::{
         backend::v1beta1::{
-            distribution_service_client::DistributionServiceClient, DeregisterClientRequest,
+            distribution_service_client::DistributionServiceClient,
             GetRepositoryContentsRequest, GetRepositoryContentsResponse,
-            GetRepositoryVersionRequest, Namespace, RegisterClientRequest, RepositoryKey,
+            GetRepositoryVersionRequest, Namespace,
         },
         feature::v1beta1::Feature,
     },
     repofs::RepoFS,
     service::Mode,
-    types::{FeatureRequestParams, APIKEY}, state::{StateStore, StateMachine},
+    types::{FeatureRequestParams, APIKEY, ConnectionCredentials, add_api_key}, state::{StateStore, StateMachine},
 };
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
@@ -29,20 +28,17 @@ use notify::{
     EventKind::{Create, Modify, Remove},
     PollWatcher, RecursiveMode, Watcher,
 };
-use prost::Message;
 use regex::Regex;
 use tonic::{
     body::BoxBody,
-    metadata::{Ascii, MetadataValue},
     Request,
 };
 
 use tokio::{
-    sync::oneshot::{Receiver, Sender},
     task::JoinHandle,
 };
 
-// Store acts as the abstraction for the storage and retrieval of all features.
+// ConfigStore acts as the abstraction for the storage and retrieval of all features.
 // Internally there is a state machine that has two states: registered and unregistered.
 // A store starts unregistered, and a single register call will make it registered.
 // Once registered, a store will poll for new configuration and ignore subsequent register calls.
@@ -50,8 +46,7 @@ use tokio::{
 // We have an std RwLock around any concurrent state that we currently manage.
 // Std locks are fine to use in async functions as long as we don't hold them across
 // await's. This is enforced by the compiler, but just something to keep in mind.
-pub struct Store {
-    dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
+pub struct ConfigStore {
     config: Arc<RwLock<ConfigState>>,
     state_store: StateStore,
     // keeping the join handle around keeps the poll watcher in scope,
@@ -108,7 +103,7 @@ async fn fs_watch(path: String, state: Arc<RwLock<ConfigState>>) -> PollWatcher 
                             }
                         }) {
                             let path = path.clone();
-                            match RepoFS::new(path).load() {
+                            match RepoFS::new(path).and_then(|r| r.load()) {
                                 Ok(res) => {
                                     {
                                         // obtain lock again to replace data
@@ -159,16 +154,16 @@ async fn poll_loop(
     //
     // Keep conn_creds around to not have to read it from concurrent state all the time.
 
-    let mut rx = state_store.notify();
-    match rx.wait_for(|state| matches!(state, StateMachine::Active(_) | StateMachine::Shutdown)).await {
-        Ok(data) => {
-            let version = data.repo_version.clone();
-            info!(
-                "got register message, starting polling for {}/{} from version: {version}",
-                &data.conn_creds.repo_key.owner_name, &data.conn_creds.repo_key.repo_name
-            );
-            let mut state_guard = config.write().unwrap();
-            *state_guard = data;
+    let mut rx = state_store.receiver();
+    let conn_creds = match rx.wait_for(|state| matches!(state, StateMachine::Active(_) | StateMachine::Shutdown)).await {
+        Ok(state) => {
+	    match &*state {
+		StateMachine::Active(cc) => cc.clone(),
+		StateMachine::Shutdown => {
+			return
+		},
+		_ => {panic!("unknown state: {:?}", state)}
+	    }
         }
         Err(err) => {
             // TODO: handle panics better.
@@ -191,7 +186,7 @@ async fn poll_loop(
             };
 
         {
-            let state_guard = state.read().unwrap();
+            let state_guard = config.read().unwrap();
             if state_guard.repo_version == new_version {
                 continue;
             }
@@ -200,26 +195,10 @@ async fn poll_loop(
 
         info!("found new version: {new_version}, fetching");
 
-        match get_repo_contents_remote(
-            dist_client.clone(),
-            conn_creds_to_repo_contents_request(conn_creds.clone()),
-        )
-        .await
+        if let Err(err) = update_state_remote(dist_client.clone(), conn_creds.clone(), config.clone()).await
         {
-            Ok(res) => {
-                {
-                    // obtain lock again to replace data
-                    let mut state_guard = state.write().unwrap();
-                    state_guard.cache = create_feature_store(res.namespaces);
-                    state_guard.repo_version = res.commit_sha.to_owned();
-                    // drop state_guard
-                }
-                info!("loaded repo contents for commit sha {:}", res.commit_sha);
-            }
-            Err(err) => {
-                // This is a problem, error loudly.
-                error!("error encountered when fetching full repository state: {err:?}",);
-            }
+            // This is a problem, error loudly.
+            error!("error encountered when fetching full repository state: {err:?}",);
         }
     }
 }
@@ -280,12 +259,29 @@ async fn get_repo_contents_remote(
     mut dist_client: DistributionServiceClient<
         hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
     >,
-    request: Request<GetRepositoryContentsRequest>,
+    conn_creds: ConnectionCredentials,
 ) -> Result<GetRepositoryContentsResponse, tonic::Status> {
     dist_client
-        .get_repository_contents(request)
+        .get_repository_contents(conn_creds_to_repo_contents_request(conn_creds))
         .await
         .map(|resp| resp.into_inner())
+}
+
+async fn update_state_remote(
+    dist_client: DistributionServiceClient<
+        hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
+    >,
+    conn_creds: ConnectionCredentials,
+    config: Arc<RwLock<ConfigState>>
+) -> Result<(), tonic::Status> {
+    let success_resp = get_repo_contents_remote(
+        dist_client,
+	conn_creds,
+    ).await?;
+    let mut write_guard = config.write().unwrap();
+    write_guard.cache = create_feature_store(success_resp.namespaces);
+    write_guard.repo_version = success_resp.commit_sha;
+    Ok(())
 }
 
 impl ConfigStore {
@@ -318,7 +314,7 @@ impl ConfigStore {
                     None => panic!("no repo path provided for sidecar configured to be static"),
                     Some(p) => p,
                 };
-                Some(tokio::spawn(fs_watch(path, state.clone())))
+                Some(tokio::spawn(fs_watch(path, config.clone())))
             }
             _ => {
                 // TODO: worry about this join handle.
@@ -332,96 +328,9 @@ impl ConfigStore {
             }
         };
         Self {
-            dist_client,
 	    config,
             state_store,
             _join_handle: jh,
-        }
-    }
-
-    pub async fn deregister(&self) -> Result<(), tonic::Status> {
-        // TODO: block connections and/or figure out multi-tenant sidecar with a semaphore for our state machine.
-        let ConnectionCredentials {
-            session_key,
-            api_key,
-            ..
-        } = self.state.read().unwrap().conn_creds.clone();
-        self.dist_client
-            .clone()
-            .deregister_client(add_api_key(
-                DeregisterClientRequest { session_key },
-                api_key,
-            ))
-            .await
-            .map(|_| ())
-    }
-
-    pub async fn register(
-        &self,
-        repo_key: RepositoryKey,
-        // TODO: handle multiple namespaces by iterating over namespaces or changing GetRepoContents
-        namespaces: &[String],
-        api_key: MetadataValue<Ascii>,
-    ) -> Result<(), tonic::Status> {
-        // Proxy register call first
-        //
-        // Because we do this one line, we should drop the read lock right after.
-        let bootstrap_sha = self.state.read().unwrap().repo_version.clone();
-
-        let session_key = match self
-            .dist_client
-            .clone()
-            .register_client(add_api_key(
-                RegisterClientRequest {
-                    repo_key: Some(repo_key.clone()),
-                    initial_bootstrap_sha: bootstrap_sha,
-                    // TODO sidecar version
-                    sidecar_version: "".to_string(),
-                    namespace_list: Vec::from(namespaces),
-                },
-                api_key.clone(),
-            ))
-            .await
-        {
-            Ok(resp) => resp.into_inner().session_key,
-            Err(err) => {
-                // If we have an error registering, we probably can't reach lekko. If we operate off of a bootstrap
-                // we can continue to function off of that information. Unfortunately, we won't get updates. More
-                // work will have to be done here to recover on a loop. For now, we return an error such that we expect
-                // the SDK or client to retry the registration.
-                return Err(tonic::Status::resource_exhausted(format!(
-                    "error when registering with lekko {err:?}",
-                )));
-            }
-        };
-
-        let success_resp = get_repo_contents_remote(
-            self.dist_client.clone(),
-            add_api_key(
-                GetRepositoryContentsRequest {
-                    repo_key: Some(repo_key.clone()),
-                    ..Default::default()
-                },
-                api_key.clone(),
-            ),
-        )
-        .await?;
-        let mut guard = self.initialize_tx.lock().unwrap();
-        match guard.deref_mut().take() {
-            Some(sender) => sender
-                .send(ConfigState {
-                    cache: create_feature_store(success_resp.namespaces),
-                    repo_version: success_resp.commit_sha,
-                })
-                .map_err(|_| {
-                    tonic::Status::internal(
-                        "receiver dropped for register rpc. something is seriously wrong",
-                    )
-                }),
-            // If we want multi-tenant sidecars in the future, this will have to change.
-            None => Err(tonic::Status::already_exists(
-                "register has already been called on this sidecar, ignoring register RPC",
-            )),
         }
     }
 
@@ -429,7 +338,7 @@ impl ConfigStore {
         let ConfigState {
             cache,
             repo_version,
-        } = &*self.state.read().unwrap();
+        } = &*self.config.read().unwrap();
         return cache
             .get(&FeatureKey {
                 namespace: request.namespace.clone(),
@@ -443,8 +352,3 @@ impl ConfigStore {
     }
 }
 
-fn add_api_key<T: Message>(m: T, api_key: MetadataValue<Ascii>) -> tonic::Request<T> {
-    let mut r = Request::new(m);
-    r.metadata_mut().append(APIKEY, api_key);
-    r
-}

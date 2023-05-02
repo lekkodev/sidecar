@@ -1,5 +1,6 @@
 use prost::{DecodeError, Message};
 use prost_types::Any;
+use tonic::Request;
 use tonic::metadata::{MetadataValue, Ascii};
 
 use crate::gen::mod_cli::lekko::backend::v1beta1::RepositoryKey;
@@ -10,9 +11,9 @@ pub const APIKEY: &str = "apikey";
 
 #[derive(Clone)]
 pub struct ConnectionCredentials {
-    repo_key: RepositoryKey,
-    api_key: MetadataValue<Ascii>,
-    session_key: String,
+    pub repo_key: RepositoryKey,
+    pub api_key: MetadataValue<Ascii>,
+    pub session_key: String,
 }
 
 // Contains all parameters needed to fetch a feature.
@@ -49,4 +50,10 @@ pub fn convert_repo_key(rk: &PublicRepositoryKey) -> RepositoryKey {
         owner_name: rk.owner_name.clone(),
         repo_name: rk.repo_name.clone(),
     }
+}
+
+pub fn add_api_key<T: Message>(m: T, api_key: MetadataValue<Ascii>) -> Request<T> {
+    let mut r = Request::new(m);
+    r.metadata_mut().append(APIKEY, api_key);
+    r
 }

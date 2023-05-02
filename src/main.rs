@@ -1,18 +1,19 @@
 use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
+use sidecar::gen::mod_cli::lekko::backend::v1beta1::RepositoryKey;
 use sidecar::gen::mod_cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_server::ConfigurationServiceServer;
 use sidecar::repofs::RepoFS;
 
 use hyper::{http::Request, Body};
-use log::{error, log};
+use log::log;
 use sidecar::logging;
 use sidecar::metrics::Metrics;
 use sidecar::service::{Mode, Service};
-use sidecar::store::Store;
+use sidecar::store::ConfigStore;
+use sidecar::state::{StateStore, StateMachine};
 use std::net::SocketAddr;
-use std::sync::Mutex;
 use std::time::Duration;
 use tokio::signal::unix::SignalKind;
 use tonic::codegen::CompressionEncoding;
@@ -89,7 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     );
 
-    let bootstrap_data = match &args.repo_path {
+    let repo_fs_opt = match &args.repo_path {
         None => {
             if matches!(args.mode, Mode::Static) {
                 panic!("no bootstrap provided for sidecar configured to be static")
@@ -97,12 +98,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
         Some(rp) => {
-            let mut bootstrap = RepoFS::new(rp.to_owned());
-            Some(
-                bootstrap
-                    .load()
-                    .unwrap_or_else(|e| panic!("failed bootstrap load: {e:?}")),
-            )
+	    // Panic for invalid bootstrap irregardless of the mode.
+            Some(RepoFS::new(rp.to_owned()).unwrap())
         }
     };
     // By default, send and accept GZip compression for both the client and the server.
@@ -114,22 +111,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
 
-    // Have a oneshot for deregister to release shutdown in case of a SIGTERM. This behavior is intended
-    // to keep the sidecar up longer than its client process.
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
-    let store = Store::new(
+    let state_store = StateStore::new(repo_fs_opt.as_ref().map(|data| (RepositoryKey{owner_name: "".to_string(), repo_name: "".to_string()}, data.git_commit_sha().unwrap())));
+    let config_store = ConfigStore::new(
         dist_client.clone(),
-        bootstrap_data,
+        repo_fs_opt.map(|repo_fs| repo_fs.load().unwrap()),
+	state_store.clone(),
         args.poll_internal,
         args.mode.to_owned(),
         args.repo_path,
     );
-    let metrics = Metrics::new(dist_client);
+
+
+    let metrics = Metrics::new(dist_client.clone());
     let service = ConfigurationServiceServer::new(Service {
-        shutdown_tx: Mutex::new(Some(shutdown_tx)),
         config_client,
-        store,
+	dist_client,
+        config_store,
+	state_store: state_store.clone(),
         mode: args.mode,
         metrics,
     })
@@ -168,20 +167,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap()
                 .recv()
                 .await;
-            // wait on signal from deregister
+
             log!(
                 log::max_level().to_level().unwrap_or(log::Level::Warn),
                 "got sigterm, waiting for deregister before gracefully shutting down"
             );
-            match shutdown_rx.await {
-                Ok(()) => {}
-                Err(error) => {
-                    error!("error when shutting down: {error:?}")
-                }
-            };
+	    state_store.receiver().wait_for(|state| matches!(state, StateMachine::Shutdown)).await.unwrap();
             log!(
                 log::max_level().to_level().unwrap_or(log::Level::Warn),
-                "got deregister, gracefully shutting down"
+                "gracefully shutting down"
             );
             // shutdown metrics
         })
