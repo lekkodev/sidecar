@@ -174,6 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log::max_level().to_level().unwrap_or(log::Level::Warn),
                 "got sigterm, waiting for deregister before gracefully shutting down"
             );
+            state_store.shutdown();
             state_store
                 .receiver()
                 .wait_for(|state| matches!(state, StateMachine::Shutdown))

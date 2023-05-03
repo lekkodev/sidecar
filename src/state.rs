@@ -7,7 +7,7 @@ use log::log;
 use std::{
     fmt::Debug,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -51,6 +51,7 @@ pub struct StateStore {
     sender: Arc<Sender<StateMachine>>,
     receiver: Receiver<StateMachine>,
     register_counter: Arc<AtomicUsize>,
+    received_shutdown: Arc<AtomicBool>,
     mode: Mode,
 }
 
@@ -70,6 +71,7 @@ impl StateStore {
             sender: Arc::new(tx),
             receiver: rx,
             register_counter: Arc::new(AtomicUsize::new(0)),
+            received_shutdown: Arc::new(AtomicBool::new(false)),
             mode,
         }
     }
@@ -102,18 +104,19 @@ impl StateStore {
         }
     }
 
-    pub async fn deregister(&self) {
-        self.register_counter.fetch_sub(1, ORDERING);
-
-        if self.register_counter.load(ORDERING) == 0 {
-            // TODO(konrad): upon sigterm only.
-            if self.sender.send_if_modified(|state| match state {
-                StateMachine::Shutdown => false,
-                _ => {
-                    *state = StateMachine::Shutdown;
-                    true
-                }
-            }) {
+    pub fn deregister(&self) {
+        let res = self.register_counter.fetch_sub(1, ORDERING);
+        if self.received_shutdown.load(ORDERING) {
+            // If ths previous value was one, thus we decremented to zero, we should shutdown.
+            if res == 1
+                && self.sender.send_if_modified(|state| match state {
+                    StateMachine::Shutdown => false,
+                    _ => {
+                        *state = StateMachine::Shutdown;
+                        true
+                    }
+                })
+            {
                 log!(
                     log::max_level().to_level().unwrap_or(log::Level::Warn),
                     "transitioned to Shutdown state",
@@ -122,7 +125,27 @@ impl StateStore {
         }
     }
 
-    pub async fn shutdown(&self) {}
+    // This should be called only after receiving a SIGTERM.
+    pub fn shutdown(&self) {
+        self.received_shutdown.store(true, ORDERING);
+        // Because we shutdown first, and then check ordering, and since
+        // the opposite occurs in deregister, no ordering of these 4 checks
+        // will result in us missing the shutdown.
+        if self.register_counter.load(ORDERING) == 0
+            && self.sender.send_if_modified(|state| match state {
+                StateMachine::Shutdown => false,
+                _ => {
+                    *state = StateMachine::Shutdown;
+                    true
+                }
+            })
+        {
+            log!(
+                log::max_level().to_level().unwrap_or(log::Level::Warn),
+                "transitioned to Shutdown state",
+            );
+        }
+    }
 
     // By using the receiver, you can wait on a specific state transition to occur:
     // state_store.receiver().wait_for(|state| matches!(state, StateMachine::Shutdown)).await

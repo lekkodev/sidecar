@@ -180,29 +180,16 @@ impl ConfigurationService for Service {
             .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
             .to_owned();
 
-        let session_key = "".to_string(); // TODO
+        let session_key = match self.state_store.current_state() {
+            StateMachine::Active(cc) => cc.session_key,
+            _ => "".to_string(),
+        };
 
         self.dist_client
             .clone()
             .deregister_client(add_api_key(DeregisterClientRequest { session_key }, apikey))
             .await?;
 
-        // There is a potential race condition here of if we got SIGTERM,
-        // we never return this error message because the oneshot has released our
-        // graceful shutdown handler and we exit too fast. This is unlikely, and worst
-        // case results in an error message for the caller.
-        /*
-        let mut guard = self.shutdown_tx.lock().unwrap();
-        match guard.deref_mut().take() {
-            Some(sender) => sender
-                .send(())
-                .map_err(|_| tonic::Status::internal("shutdown already initiated"))?,
-            None => {
-                return Err(tonic::Status::already_exists(
-                    "deregister has already been called on this sidecar, ignoring deregister RPC",
-                ))
-            }
-        }*/
         Ok(Response::new(DeregisterResponse::default()))
     }
 
