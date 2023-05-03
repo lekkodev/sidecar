@@ -1,13 +1,28 @@
 use prost::{DecodeError, Message};
 use prost_types::Any;
+use tonic::metadata::{Ascii, MetadataValue};
 use tonic::Request;
-use tonic::metadata::{MetadataValue, Ascii};
 
 use crate::gen::mod_cli::lekko::backend::v1beta1::RepositoryKey;
 use crate::gen::mod_sdk::lekko::client::v1beta1::RepositoryKey as PublicRepositoryKey;
 
 // Key that the lekko api key is stored under in rpc headers.
 pub const APIKEY: &str = "apikey";
+
+// Mode represents the running mode of the sidecar.
+//
+// Default implies polling for updates from remote while
+// and evaluating locally while polling for updates. Initialization
+// can be optionally boostrapped from a volume of the configuration repo.
+//
+// Static fetches from the bootstrap and always evaluates against those values. No
+// connection is made to Lekko services.
+#[derive(clap::ValueEnum, Clone, Copy, Default, Debug)]
+pub enum Mode {
+    #[default]
+    Default,
+    Static,
+}
 
 #[derive(Clone)]
 pub struct ConnectionCredentials {

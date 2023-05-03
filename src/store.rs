@@ -8,15 +8,14 @@ use std::{
 use crate::{
     gen::mod_cli::lekko::{
         backend::v1beta1::{
-            distribution_service_client::DistributionServiceClient,
-            GetRepositoryContentsRequest, GetRepositoryContentsResponse,
-            GetRepositoryVersionRequest, Namespace,
+            distribution_service_client::DistributionServiceClient, GetRepositoryContentsRequest,
+            GetRepositoryContentsResponse, GetRepositoryVersionRequest, Namespace,
         },
         feature::v1beta1::Feature,
     },
     repofs::RepoFS,
-    service::Mode,
-    types::{FeatureRequestParams, APIKEY, ConnectionCredentials, add_api_key}, state::{StateStore, StateMachine},
+    state::{StateMachine, StateStore},
+    types::{add_api_key, ConnectionCredentials, FeatureRequestParams, Mode, APIKEY},
 };
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
@@ -29,14 +28,9 @@ use notify::{
     PollWatcher, RecursiveMode, Watcher,
 };
 use regex::Regex;
-use tonic::{
-    body::BoxBody,
-    Request,
-};
+use tonic::{body::BoxBody, Request};
 
-use tokio::{
-    task::JoinHandle,
-};
+use tokio::task::JoinHandle;
 
 // ConfigStore acts as the abstraction for the storage and retrieval of all features.
 // Internally there is a state machine that has two states: registered and unregistered.
@@ -48,7 +42,7 @@ use tokio::{
 // await's. This is enforced by the compiler, but just something to keep in mind.
 pub struct ConfigStore {
     config: Arc<RwLock<ConfigState>>,
-    state_store: StateStore,
+    _state_store: StateStore,
     // keeping the join handle around keeps the poll watcher in scope,
     // which is necessary to receive watch events from the filesystem.
     _join_handle: Option<JoinHandle<PollWatcher>>,
@@ -155,16 +149,17 @@ async fn poll_loop(
     // Keep conn_creds around to not have to read it from concurrent state all the time.
 
     let mut rx = state_store.receiver();
-    let conn_creds = match rx.wait_for(|state| matches!(state, StateMachine::Active(_) | StateMachine::Shutdown)).await {
-        Ok(state) => {
-	    match &*state {
-		StateMachine::Active(cc) => cc.clone(),
-		StateMachine::Shutdown => {
-			return
-		},
-		_ => {panic!("unknown state: {:?}", state)}
-	    }
-        }
+    let conn_creds = match rx
+        .wait_for(|state| matches!(state, StateMachine::Active(_) | StateMachine::Shutdown))
+        .await
+    {
+        Ok(state) => match &*state {
+            StateMachine::Active(cc) => cc.clone(),
+            StateMachine::Shutdown => return,
+            _ => {
+                panic!("unknown state: {:?}", state)
+            }
+        },
         Err(err) => {
             // TODO: handle panics better.
             panic!("error encountered when initializing sidecar state: {err:?}",)
@@ -195,7 +190,8 @@ async fn poll_loop(
 
         info!("found new version: {new_version}, fetching");
 
-        if let Err(err) = update_state_remote(dist_client.clone(), conn_creds.clone(), config.clone()).await
+        if let Err(err) =
+            update_state_remote(dist_client.clone(), conn_creds.clone(), config.clone()).await
         {
             // This is a problem, error loudly.
             error!("error encountered when fetching full repository state: {err:?}",);
@@ -268,16 +264,11 @@ async fn get_repo_contents_remote(
 }
 
 async fn update_state_remote(
-    dist_client: DistributionServiceClient<
-        hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
-    >,
+    dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
     conn_creds: ConnectionCredentials,
-    config: Arc<RwLock<ConfigState>>
+    config: Arc<RwLock<ConfigState>>,
 ) -> Result<(), tonic::Status> {
-    let success_resp = get_repo_contents_remote(
-        dist_client,
-	conn_creds,
-    ).await?;
+    let success_resp = get_repo_contents_remote(dist_client, conn_creds).await?;
     let mut write_guard = config.write().unwrap();
     write_guard.cache = create_feature_store(success_resp.namespaces);
     write_guard.repo_version = success_resp.commit_sha;
@@ -290,7 +281,7 @@ impl ConfigStore {
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
         bootstrap_data: Option<GetRepositoryContentsResponse>,
-	state_store: StateStore,
+        state_store: StateStore,
         poll_interval: Duration,
         mode: Mode,
         repo_path: Option<String>,
@@ -318,18 +309,18 @@ impl ConfigStore {
             }
             _ => {
                 // TODO: worry about this join handle.
-		tokio::spawn(poll_loop(
-		    dist_client.clone(),
-		    config.clone(),
-		    state_store.clone(),
-		    poll_interval,
-		));
+                tokio::spawn(poll_loop(
+                    dist_client,
+                    config.clone(),
+                    state_store.clone(),
+                    poll_interval,
+                ));
                 None
             }
         };
         Self {
-	    config,
-            state_store,
+            config,
+            _state_store: state_store,
             _join_handle: jh,
         }
     }
@@ -351,4 +342,3 @@ impl ConfigStore {
             });
     }
 }
-

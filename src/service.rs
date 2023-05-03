@@ -12,47 +12,40 @@ use tonic::{
 use crate::{
     evaluate::evaluator::evaluate,
     gen::mod_cli::lekko::feature::v1beta1::FeatureType,
-    gen::{mod_sdk::lekko::client::v1beta1::{
-        configuration_service_client::ConfigurationServiceClient,
-        configuration_service_server::ConfigurationService, DeregisterRequest, DeregisterResponse,
-        GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest, GetFloatValueResponse,
-        GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest, GetJsonValueResponse,
-        GetProtoValueRequest, GetProtoValueResponse, GetStringValueRequest, GetStringValueResponse,
-        RegisterRequest, RegisterResponse, Value,
-    }, mod_cli::lekko::backend::v1beta1::{distribution_service_client::DistributionServiceClient, RegisterClientRequest, DeregisterClientRequest}},
+    gen::{
+        mod_cli::lekko::backend::v1beta1::{
+            distribution_service_client::DistributionServiceClient, DeregisterClientRequest,
+            RegisterClientRequest,
+        },
+        mod_sdk::lekko::client::v1beta1::{
+            configuration_service_client::ConfigurationServiceClient,
+            configuration_service_server::ConfigurationService, DeregisterRequest,
+            DeregisterResponse, GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest,
+            GetFloatValueResponse, GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest,
+            GetJsonValueResponse, GetProtoValueRequest, GetProtoValueResponse,
+            GetStringValueRequest, GetStringValueResponse, RegisterRequest, RegisterResponse,
+            Value,
+        },
+    },
     logging::InsertLogFields,
     metrics::Metrics,
+    state::{StateMachine, StateStore},
     store::ConfigStore,
-    types::{self, convert_repo_key, FeatureRequestParams, APIKEY, add_api_key}, state::{StateStore, StateMachine},
+    types::{self, add_api_key, convert_repo_key, FeatureRequestParams, Mode, APIKEY},
 };
-
-// Mode represents the running mode of the sidecar.
-//
-// Default implies polling for updates from remote while
-// and evaluating locally while polling for updates. Initialization
-// can be optionally boostrapped from a volume of the configuration repo.
-//
-// Static fetches from the bootstrap and always evaluates against those values. No
-// connection is made to Lekko services.
-#[derive(clap::ValueEnum, Clone, Default, Debug)]
-pub enum Mode {
-    #[default]
-    Default,
-    Static,
-}
 
 // This is the main rpc entrypoint into the sidecar. All host pods will communicate with the
 // sidecar via this Service, using the language-native SDK.
 pub struct Service {
     pub config_client:
         ConfigurationServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
-    pub dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
+    pub dist_client:
+        DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
     pub config_store: ConfigStore,
     pub state_store: StateStore,
     pub mode: Mode,
     pub metrics: Metrics,
 }
-
 
 impl Service {
     fn get_value_local(
@@ -98,61 +91,82 @@ impl ConfigurationService for Service {
             .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
             .to_owned();
 
-	let request = request.into_inner();
+        let request = request.into_inner();
 
-	let requested_rk = request.repo_key.ok_or_else(|| Status::invalid_argument("missing repo_key"))?;
+        let requested_rk = request
+            .repo_key
+            .ok_or_else(|| Status::invalid_argument("missing repo_key"))?;
 
-	// for use in the move closure
-	let copy_rk = requested_rk.clone();
-	let proxy = |bootstrap_sha: String| async {
+        // for use in the move closure
+        let copy_rk = requested_rk.clone();
+        let proxy = |bootstrap_sha: String| async {
             self.dist_client
-		.clone()
-		.register_client(add_api_key(
+                .clone()
+                .register_client(add_api_key(
                     RegisterClientRequest {
-			repo_key: Some(convert_repo_key(
-			    &copy_rk
-			),
-			),
-			initial_bootstrap_sha: bootstrap_sha,
-			// TODO sidecar version
-			sidecar_version: "".to_string(),
-			namespace_list: request.namespace_list,
+                        repo_key: Some(convert_repo_key(&copy_rk)),
+                        initial_bootstrap_sha: bootstrap_sha,
+                        // TODO sidecar version
+                        sidecar_version: "".to_string(),
+                        namespace_list: request.namespace_list,
                     },
                     apikey.clone(),
-		))
-		.await.map(|resp| resp.into_inner().session_key)
-	};
-	let curr_state = self.state_store.current_state();
-	match (&self.mode, &curr_state) {
-	    (Mode::Static, StateMachine::Bootstrapped((rk, _))) => {
-		if rk.owner_name != requested_rk.owner_name || rk.repo_name != requested_rk.repo_name {
-		    return Err(Status::invalid_argument(format!("registration mismatch with static state: requested_repo: {:?}, static_repo: {:?}", requested_rk, rk)))
-		}
-	    },
-	    (Mode::Default, StateMachine::Bootstrapped((rk, bsha))) => {
-		if rk.owner_name != requested_rk.owner_name || rk.repo_name != requested_rk.repo_name {
-		    return Err(Status::invalid_argument(format!("registration mismatch with: requested_repo: {:?}, bootstrapped_repo: {:?}", requested_rk, rk)))
-		}
-		let session_key = proxy(bsha.clone()).await?;
-		self.state_store.register(session_key).await
-	    },
-	    (Mode::Default, StateMachine::Active(cc)) => {
-		if cc.repo_key.owner_name != requested_rk.owner_name || cc.repo_key.repo_name != requested_rk.repo_name {
-		    return Err(Status::invalid_argument(format!("registration mismatch with: requested_repo: {:?}, current_repo: {:?}", requested_rk, cc.repo_key)))
-		}
-		let session_key = proxy("".to_string()).await?;
-		self.state_store.register(session_key).await;
-	    },
-	    (Mode::Default, StateMachine::Uninitialized) => {
-		let session_key = proxy("".to_string()).await?;
-		self.state_store.register(session_key).await;
-		// TODO: block until a change is actually made.
-	    },
-	    _ => {
-		// Potentially panic here
-		return Err(Status::internal(format!("invalid internal state: {:?} {:?}", self.mode, curr_state)))
-	    }
-	}
+                ))
+                .await
+                .map(|resp| resp.into_inner().session_key)
+        };
+        let curr_state = self.state_store.current_state();
+        match (&self.mode, &curr_state) {
+            (Mode::Static, StateMachine::Bootstrapped((rk, _))) => {
+                if rk.owner_name != requested_rk.owner_name
+                    || rk.repo_name != requested_rk.repo_name
+                {
+                    return Err(Status::invalid_argument(format!("registration mismatch with static state: requested_repo: {:?}, static_repo: {:?}", requested_rk, rk)));
+                }
+            }
+            (Mode::Default, StateMachine::Bootstrapped((rk, bsha))) => {
+                if rk.owner_name != requested_rk.owner_name
+                    || rk.repo_name != requested_rk.repo_name
+                {
+                    return Err(Status::invalid_argument(format!(
+                        "registration mismatch with: requested_repo: {:?}, bootstrapped_repo: {:?}",
+                        requested_rk, rk
+                    )));
+                }
+                let session_key = proxy(bsha.clone()).await?;
+                self.state_store
+                    .register(convert_repo_key(&requested_rk), apikey.clone(), session_key)
+                    .await
+            }
+            (Mode::Default, StateMachine::Active(cc)) => {
+                if cc.repo_key.owner_name != requested_rk.owner_name
+                    || cc.repo_key.repo_name != requested_rk.repo_name
+                {
+                    return Err(Status::invalid_argument(format!(
+                        "registration mismatch with: requested_repo: {:?}, current_repo: {:?}",
+                        requested_rk, cc.repo_key
+                    )));
+                }
+                let session_key = proxy("".to_string()).await?;
+                self.state_store
+                    .register(convert_repo_key(&requested_rk), apikey.clone(), session_key)
+                    .await
+            }
+            (Mode::Default, StateMachine::Uninitialized) => {
+                let session_key = proxy("".to_string()).await?;
+                self.state_store
+                    .register(convert_repo_key(&requested_rk), apikey.clone(), session_key)
+                    .await
+                // TODO: block until a change is actually made.
+            }
+            _ => {
+                // Potentially panic here
+                return Err(Status::internal(format!(
+                    "invalid internal state: {:?} {:?}",
+                    self.mode, curr_state
+                )));
+            }
+        }
         Ok(Response::new(RegisterResponse::default()))
     }
 
@@ -160,28 +174,24 @@ impl ConfigurationService for Service {
         &self,
         request: Request<DeregisterRequest>,
     ) -> Result<tonic::Response<DeregisterResponse>, tonic::Status> {
-
         let apikey = request
             .metadata()
             .get(APIKEY)
             .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
             .to_owned();
 
-	let session_key = "".to_string(); // TODO
-	
+        let session_key = "".to_string(); // TODO
+
         self.dist_client
             .clone()
-            .deregister_client(add_api_key(
-                DeregisterClientRequest { session_key },
-                apikey,
-            ))
+            .deregister_client(add_api_key(DeregisterClientRequest { session_key }, apikey))
             .await?;
 
         // There is a potential race condition here of if we got SIGTERM,
         // we never return this error message because the oneshot has released our
         // graceful shutdown handler and we exit too fast. This is unlikely, and worst
         // case results in an error message for the caller.
-/*
+        /*
         let mut guard = self.shutdown_tx.lock().unwrap();
         match guard.deref_mut().take() {
             Some(sender) => sender
@@ -265,7 +275,6 @@ impl ConfigurationService for Service {
             .get(APIKEY)
             .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
             .to_owned();
-
 
         let inner = request.into_inner();
         let params = FeatureRequestParams {

@@ -10,7 +10,7 @@ use tonic::Status;
 use yaml_rust::YamlLoader;
 
 use crate::gen::mod_cli::lekko::{
-    backend::v1beta1::{Feature, GetRepositoryContentsResponse, Namespace},
+    backend::v1beta1::{Feature, GetRepositoryContentsResponse, Namespace, RepositoryKey},
     feature,
 };
 
@@ -26,37 +26,37 @@ pub struct RepoFS {
     contents_path: String,
 }
 
-    // Check to see if the repo exists
-    fn validate(repo_path: &str) -> Result<String, Status> {
-        let git_dir_path = format!("{:}/.git", repo_path);
-        let md = match std::fs::metadata(Path::new(&git_dir_path)) {
-            Ok(m) => m,
-            Err(e) => {
-                return Err(Status::internal(format!(
-                    "path {git_dir_path:} does not exist: {e:?}",
-                )))
-            }
-        };
+// Check to see if the repo exists
+fn validate(repo_path: &str) -> Result<String, Status> {
+    let git_dir_path = format!("{:}/.git", repo_path);
+    let md = match std::fs::metadata(Path::new(&git_dir_path)) {
+        Ok(m) => m,
+        Err(e) => {
+            return Err(Status::internal(format!(
+                "path {git_dir_path:} does not exist: {e:?}",
+            )))
+        }
+    };
 
-        if !md.is_dir() {
-            return Err(Status::internal(format!(
-                "path {git_dir_path:} is not a directory",
-            )));
-        }
-        let default_contents_path = repo_path.to_owned();
-        let default_root_yaml_path = format!("{default_contents_path:}/lekko.root.yaml");
-        if Path::new(&default_root_yaml_path).exists() {
-            return Ok(default_contents_path);
-        }
-        let git_sync_contents_path = format!("{:}/contents", repo_path);
-        let git_sync_root_yaml_path = format!("{git_sync_contents_path:}/lekko.root.yaml");
-        if !Path::new(&git_sync_root_yaml_path).exists() {
-            return Err(Status::internal(format!(
-                "paths {default_root_yaml_path:} or {git_sync_root_yaml_path:} do not exist",
-            )));
-        }
-        Ok(git_sync_contents_path)
+    if !md.is_dir() {
+        return Err(Status::internal(format!(
+            "path {git_dir_path:} is not a directory",
+        )));
     }
+    let default_contents_path = repo_path.to_owned();
+    let default_root_yaml_path = format!("{default_contents_path:}/lekko.root.yaml");
+    if Path::new(&default_root_yaml_path).exists() {
+        return Ok(default_contents_path);
+    }
+    let git_sync_contents_path = format!("{:}/contents", repo_path);
+    let git_sync_root_yaml_path = format!("{git_sync_contents_path:}/lekko.root.yaml");
+    if !Path::new(&git_sync_root_yaml_path).exists() {
+        return Err(Status::internal(format!(
+            "paths {default_root_yaml_path:} or {git_sync_root_yaml_path:} do not exist",
+        )));
+    }
+    Ok(git_sync_contents_path)
+}
 
 impl RepoFS {
     pub fn new(repo_path: String) -> Result<Self, tonic::Status> {
@@ -64,8 +64,8 @@ impl RepoFS {
             contents_path: validate(&repo_path)?,
             repo_path,
         };
-	
-	Ok(fs)
+
+        Ok(fs)
     }
 
     pub fn load(&self) -> Result<GetRepositoryContentsResponse, Status> {
@@ -85,10 +85,7 @@ impl RepoFS {
 
     // find namespaces contained in the repo by inspecting lekko.root.yaml.
     fn find_namespace_names(&self) -> Result<Vec<String>, Status> {
-        let lekko_root_path = format!(
-            "{:}/lekko.root.yaml",
-            self.contents_path.to_owned()
-        );
+        let lekko_root_path = format!("{:}/lekko.root.yaml", self.contents_path.to_owned());
         let yaml = match read_to_string(&lekko_root_path) {
             Ok(contents) => match YamlLoader::load_from_str(contents.as_ref()) {
                 Ok(docs) => docs[0].to_owned(),
@@ -115,11 +112,10 @@ impl RepoFS {
     }
 
     fn load_namespace(&self, namespace: &str) -> Result<Namespace, Status> {
-        let ns_path = format!(
-            "{}/{namespace}/gen/proto",
-            self.contents_path.to_owned(),
-        );
-        let paths = read_dir(ns_path.clone()).map_err(|e| Status::invalid_argument(format!("error encountered reading dir: {ns_path} {}", e.to_string())))?;
+        let ns_path = format!("{}/{namespace}/gen/proto", self.contents_path.to_owned(),);
+        let paths = read_dir(ns_path.clone()).map_err(|e| {
+            Status::invalid_argument(format!("error encountered reading dir: {ns_path} {e}",))
+        })?;
 
         let mut features = vec![];
 
@@ -197,6 +193,53 @@ impl RepoFS {
         hasher.update(prefix.as_bytes());
         hasher.update(content);
         Ok(format!("{:x}", hasher.finalize()))
+    }
+
+    // Determines the repo key based on the default remote of the
+    // repository.
+    pub fn repo_key(&self) -> Result<RepositoryKey, Status> {
+        let repo = match git_repository::open(Path::new(&self.repo_path)) {
+            Ok(r) => r,
+            Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
+        };
+        let default_remote: String = match repo
+            .find_default_remote(git_repository::remote::Direction::Fetch)
+        {
+            Some(Ok(branch)) => branch
+                .url(git_repository::remote::Direction::Fetch)
+                .map(|url| {
+                    url.path
+                        .clone()
+                        .try_into()
+                        .map_err(|e| Status::internal(format!("error fetching remote {e}")))
+                })
+                .ok_or_else(|| Status::internal("no remote found for repo"))??,
+            Some(Err(err)) => return Err(Status::internal(format!("error fetching remote {err}"))),
+            None => return Err(Status::internal("no remote found for repo")),
+        };
+        let (owner_name, repo_name) = self
+            .get_owner_and_repo(&default_remote)
+            .ok_or_else(|| Status::internal("invalid remote {default_remote}"))?;
+        Ok(RepositoryKey {
+            owner_name,
+            repo_name,
+        })
+    }
+
+    fn get_owner_and_repo(&self, path: &str) -> Option<(String, String)> {
+        let parts: Vec<&str> = path
+            .trim_end_matches(".git")
+            .split('/')
+            .into_iter()
+            .collect();
+        if parts.len() >= 2 {
+            Some((
+                parts[parts.len() - 2].to_owned(),
+                parts[parts.len() - 1].to_owned(),
+            ))
+        } else {
+            None
+        }
     }
 
     // Determines the git commit sha of HEAD.

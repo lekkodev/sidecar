@@ -1,7 +1,18 @@
-use std::{sync::{RwLock, Arc, atomic::{AtomicUsize, Ordering}}, fmt::Debug};
-use tokio::sync::watch::{Sender, Receiver, self};
-use crate::{types::ConnectionCredentials, gen::mod_cli::lekko::backend::v1beta1::RepositoryKey};
+use crate::{
+    gen::mod_cli::lekko::backend::v1beta1::RepositoryKey,
+    types::{ConnectionCredentials, Mode},
+};
 use core::ops::Deref;
+use log::log;
+use std::{
+    fmt::Debug,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
+use tokio::sync::watch::{self, Receiver, Sender};
+use tonic::metadata::{Ascii, MetadataValue};
 const ORDERING: Ordering = std::sync::atomic::Ordering::Relaxed;
 
 // This state transitions linearly, and may skip steps.
@@ -19,12 +30,15 @@ pub enum StateMachine {
 
 impl Debug for StateMachine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-	match self {
-	    Self::Uninitialized => f.write_str("Uninitialized"),
-	    Self::Shutdown => f.write_str("Shutdown"),
-	    Self::Bootstrapped(rk) => f.write_fmt(format_args!("Bootstrap{{repo_key: {:?}}}", rk)),
-	    Self::Active(cc) => f.write_fmt(format_args!("Active{{repo_key: {:?}, session_key: {}}}", cc.repo_key, cc.session_key)),
-	}
+        match self {
+            Self::Uninitialized => f.write_str("Uninitialized"),
+            Self::Shutdown => f.write_str("Shutdown"),
+            Self::Bootstrapped(rk) => f.write_fmt(format_args!("Bootstrap{{repo_key: {:?}}}", rk)),
+            Self::Active(cc) => f.write_fmt(format_args!(
+                "Active{{repo_key: {:?}, session_key: {}}}",
+                cc.repo_key, cc.session_key
+            )),
+        }
     }
 }
 
@@ -34,42 +48,81 @@ impl Debug for StateMachine {
 // shared state internally.
 #[derive(Clone)]
 pub struct StateStore {
-    sender: Arc<RwLock<Sender<StateMachine>>>,
+    sender: Arc<Sender<StateMachine>>,
     receiver: Receiver<StateMachine>,
     register_counter: Arc<AtomicUsize>,
+    mode: Mode,
 }
 
 impl StateStore {
-    pub fn new(boostrap: Option<(RepositoryKey, String)>) -> Self {
-	let state = match boostrap {
-		None => StateMachine::Uninitialized,
-		Some(rk) => StateMachine::Bootstrapped(rk),
-	};
-	let (tx, rx) = watch::channel(state);
-	return StateStore{
-	    sender: Arc::new(RwLock::from(tx)),
-	    receiver: rx,
-	    register_counter: Arc::new(AtomicUsize::new(0))
-	}
+    pub fn new(boostrap: Option<(RepositoryKey, String)>, mode: Mode) -> Self {
+        let state = match boostrap {
+            None => StateMachine::Uninitialized,
+            Some(rk) => StateMachine::Bootstrapped(rk),
+        };
+        log!(
+            log::max_level().to_level().unwrap_or(log::Level::Warn),
+            "initializing with state: {state:?}"
+        );
+
+        let (tx, rx) = watch::channel(state);
+        StateStore {
+            sender: Arc::new(tx),
+            receiver: rx,
+            register_counter: Arc::new(AtomicUsize::new(0)),
+            mode,
+        }
     }
-    
-    pub async fn register(&self, _session_key: String) {
-	self.register_counter.fetch_add(1,ORDERING);
-	// TODO(konrad) state change
+
+    pub async fn register(
+        &self,
+        repo_key: RepositoryKey,
+        api_key: MetadataValue<Ascii>,
+        session_key: String,
+    ) {
+        self.register_counter.fetch_add(1, ORDERING);
+        if matches!(self.mode, Mode::Default) {
+            // Do a state transition, only if we aren't already active.
+            if self.sender.send_if_modified(|state| match state {
+                StateMachine::Uninitialized | StateMachine::Bootstrapped(_) => {
+                    *state = StateMachine::Active(ConnectionCredentials {
+                        repo_key,
+                        api_key,
+                        session_key,
+                    });
+                    true
+                }
+                _ => false,
+            }) {
+                log!(
+                    log::max_level().to_level().unwrap_or(log::Level::Warn),
+                    "transitioned to Active state",
+                );
+            }
+        }
     }
 
     pub async fn deregister(&self) {
-	self.register_counter.fetch_sub(1,ORDERING);
-	
-	if self.register_counter.load(ORDERING) == 0 {
-	    // TODO(konrad): upon sigterm only.
-	    self.sender.write().unwrap().send(StateMachine::Shutdown).unwrap()
-	}
+        self.register_counter.fetch_sub(1, ORDERING);
+
+        if self.register_counter.load(ORDERING) == 0 {
+            // TODO(konrad): upon sigterm only.
+            if self.sender.send_if_modified(|state| match state {
+                StateMachine::Shutdown => false,
+                _ => {
+                    *state = StateMachine::Shutdown;
+                    true
+                }
+            }) {
+                log!(
+                    log::max_level().to_level().unwrap_or(log::Level::Warn),
+                    "transitioned to Shutdown state",
+                );
+            }
+        }
     }
 
-    pub async fn shutdown(&self) {
-	
-    }
+    pub async fn shutdown(&self) {}
 
     // By using the receiver, you can wait on a specific state transition to occur:
     // state_store.receiver().wait_for(|state| matches!(state, StateMachine::Shutdown)).await
@@ -78,10 +131,10 @@ impl StateStore {
     // futures. In the future we could abstract away this notification system, but for now just use
     // the current_state function which creates a copy and holds a short read lock.
     pub fn receiver(&self) -> Receiver<StateMachine> {
-	return self.receiver.clone()
+        self.receiver.clone()
     }
 
     pub fn current_state(&self) -> StateMachine {
-	return self.receiver.borrow().deref().clone()
+        return self.receiver.borrow().deref().clone();
     }
 }

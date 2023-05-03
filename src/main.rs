@@ -1,6 +1,5 @@
 use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
-use sidecar::gen::mod_cli::lekko::backend::v1beta1::RepositoryKey;
 use sidecar::gen::mod_cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_server::ConfigurationServiceServer;
@@ -10,9 +9,10 @@ use hyper::{http::Request, Body};
 use log::log;
 use sidecar::logging;
 use sidecar::metrics::Metrics;
-use sidecar::service::{Mode, Service};
+use sidecar::service::Service;
+use sidecar::state::{StateMachine, StateStore};
 use sidecar::store::ConfigStore;
-use sidecar::state::{StateStore, StateMachine};
+use sidecar::types::Mode;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::signal::unix::SignalKind;
@@ -41,7 +41,6 @@ struct Args {
     #[arg(value_enum, long, default_value_t, verbatim_doc_comment)]
     /// Mode can be one of:
     ///   default - initialize from a bootstrap, poll local state from remote and evaluate locally.
-    ///   consistent - always evaluate using the latest value of a flag from remote.
     ///   static - operate off of a config repo found on disk at repo_path.{n}
     mode: Mode,
 
@@ -98,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
         Some(rp) => {
-	    // Panic for invalid bootstrap irregardless of the mode.
+            // Panic for invalid bootstrap irregardless of the mode.
             Some(RepoFS::new(rp.to_owned()).unwrap())
         }
     };
@@ -111,24 +110,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
 
-
-    let state_store = StateStore::new(repo_fs_opt.as_ref().map(|data| (RepositoryKey{owner_name: "".to_string(), repo_name: "".to_string()}, data.git_commit_sha().unwrap())));
+    let state_store = StateStore::new(
+        repo_fs_opt
+            .as_ref()
+            .map(|data| (data.repo_key().unwrap(), data.git_commit_sha().unwrap())),
+        args.mode,
+    );
     let config_store = ConfigStore::new(
         dist_client.clone(),
         repo_fs_opt.map(|repo_fs| repo_fs.load().unwrap()),
-	state_store.clone(),
+        state_store.clone(),
         args.poll_internal,
-        args.mode.to_owned(),
+        args.mode,
         args.repo_path,
     );
-
 
     let metrics = Metrics::new(dist_client.clone());
     let service = ConfigurationServiceServer::new(Service {
         config_client,
-	dist_client,
+        dist_client,
         config_store,
-	state_store: state_store.clone(),
+        state_store: state_store.clone(),
         mode: args.mode,
         metrics,
     })
@@ -172,7 +174,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log::max_level().to_level().unwrap_or(log::Level::Warn),
                 "got sigterm, waiting for deregister before gracefully shutting down"
             );
-	    state_store.receiver().wait_for(|state| matches!(state, StateMachine::Shutdown)).await.unwrap();
+            state_store
+                .receiver()
+                .wait_for(|state| matches!(state, StateMachine::Shutdown))
+                .await
+                .unwrap();
             log!(
                 log::max_level().to_level().unwrap_or(log::Level::Warn),
                 "gracefully shutting down"
