@@ -227,11 +227,7 @@ impl RepoFS {
     }
 
     fn get_owner_and_repo(&self, path: &str) -> Option<(String, String)> {
-        let parts: Vec<&str> = path
-            .trim_end_matches(".git")
-            .split('/')
-            .into_iter()
-            .collect();
+        let parts: Vec<&str> = path.trim_end_matches(".git").split('/').collect();
         if parts.len() >= 2 {
             Some((
                 parts[parts.len() - 2].to_owned(),
