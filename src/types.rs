@@ -1,5 +1,6 @@
 use prost::{DecodeError, Message};
 use prost_types::Any;
+use tonic::metadata::{Ascii, MetadataValue};
 
 use crate::gen::mod_cli::lekko::backend::v1beta1::RepositoryKey;
 use crate::gen::mod_sdk::lekko::client::v1beta1::RepositoryKey as PublicRepositoryKey;
@@ -40,5 +41,44 @@ pub fn convert_repo_key(rk: &PublicRepositoryKey) -> RepositoryKey {
     RepositoryKey {
         owner_name: rk.owner_name.clone(),
         repo_name: rk.repo_name.clone(),
+    }
+}
+
+// Mode represents the running mode of the sidecar.
+//
+// Default implies waiting for a Register call, fetching from a bootstrap,
+// and evaluating locally while polling for updates.
+//
+// Static fetches from the bootstrap and always evaluates against those values. No
+// connection is made to Lekko services.
+#[derive(clap::ValueEnum, Clone, Default, Debug)]
+pub enum Mode {
+    #[default]
+    Default,
+    Static,
+}
+
+#[derive(Clone)]
+pub struct ConnectionCredentials {
+    pub repo_key: RepositoryKey,
+    pub api_key: MetadataValue<Ascii>,
+    pub session_key: String,
+}
+
+pub fn add_api_key<T: Message>(m: T, api_key: MetadataValue<Ascii>) -> tonic::Request<T> {
+    let mut r = tonic::Request::new(m);
+    r.metadata_mut().append(APIKEY, api_key);
+    r
+}
+
+pub fn get_owner_and_repo(path: &str) -> Option<(String, String)> {
+    let parts: Vec<&str> = path.trim_end_matches(".git").split('/').collect();
+    if parts.len() >= 2 {
+        Some((
+            parts[parts.len() - 2].to_owned(),
+            parts[parts.len() - 1].to_owned(),
+        ))
+    } else {
+        None
     }
 }

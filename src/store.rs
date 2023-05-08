@@ -1,23 +1,20 @@
 use std::{
     collections::HashMap,
-    ops::DerefMut,
     path::Path,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
     time::Duration,
 };
 
 use crate::{
     gen::mod_cli::lekko::{
         backend::v1beta1::{
-            distribution_service_client::DistributionServiceClient, DeregisterClientRequest,
-            GetRepositoryContentsRequest, GetRepositoryContentsResponse,
-            GetRepositoryVersionRequest, Namespace, RegisterClientRequest, RepositoryKey,
+            distribution_service_client::DistributionServiceClient, GetRepositoryContentsRequest,
+            GetRepositoryContentsResponse, GetRepositoryVersionRequest, Namespace,
         },
         feature::v1beta1::Feature,
     },
     repofs::RepoFS,
-    service::Mode,
-    types::{FeatureRequestParams, APIKEY},
+    types::{add_api_key, ConnectionCredentials, FeatureRequestParams, Mode, APIKEY},
 };
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
@@ -29,18 +26,10 @@ use notify::{
     EventKind::{Create, Modify, Remove},
     PollWatcher, RecursiveMode, Watcher,
 };
-use prost::Message;
 use regex::Regex;
-use tonic::{
-    body::BoxBody,
-    metadata::{Ascii, MetadataValue},
-    Request,
-};
+use tonic::{body::BoxBody, Request};
 
-use tokio::{
-    sync::oneshot::{Receiver, Sender},
-    task::JoinHandle,
-};
+use tokio::task::JoinHandle;
 
 // Store acts as the abstraction for the storage and retrieval of all features.
 // Internally there is a state machine that has two states: registered and unregistered.
@@ -51,9 +40,7 @@ use tokio::{
 // Std locks are fine to use in async functions as long as we don't hold them across
 // await's. This is enforced by the compiler, but just something to keep in mind.
 pub struct Store {
-    dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
     state: Arc<RwLock<ConcurrentState>>,
-    initialize_tx: Mutex<Option<Sender<ConcurrentState>>>,
     // keeping the join handle around keeps the poll watcher in scope,
     // which is necessary to receive watch events from the filesystem.
     _join_handle: Option<JoinHandle<PollWatcher>>,
@@ -70,19 +57,11 @@ struct FeatureInfo {
     version: String,
 }
 
-#[derive(Clone)]
-struct ConnectionCredentials {
-    repo_key: RepositoryKey,
-    api_key: MetadataValue<Ascii>,
-    session_key: String,
-}
-
 type FeatureStore = HashMap<FeatureKey, FeatureInfo>;
 
 struct ConcurrentState {
     cache: FeatureStore,
     repo_version: String,
-    conn_creds: ConnectionCredentials,
 }
 
 pub struct FeatureData {
@@ -116,7 +95,7 @@ async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatc
                             }
                         }) {
                             let path = path.clone();
-                            match RepoFS::new(path).load() {
+                            match RepoFS::new(path).and_then(|r| r.load()) {
                                 Ok(res) => {
                                     {
                                         // obtain lock again to replace data
@@ -157,32 +136,11 @@ async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatc
 }
 
 async fn poll_loop(
-    rx: Receiver<ConcurrentState>,
     dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
     state: Arc<RwLock<ConcurrentState>>,
+    conn_creds: ConnectionCredentials,
     poll_duration: Duration,
 ) {
-    // We begin the loop by waiting for a register call.
-    // Once the register call comes through, we can start fetching on a poll.
-    //
-    // Keep conn_creds around to not have to read it from concurrent state all the time.
-    let conn_creds = match rx.await {
-        Ok(data) => {
-            let version = data.repo_version.clone();
-            info!(
-                "got register message, starting polling for {}/{} from version: {version}",
-                &data.conn_creds.repo_key.owner_name, &data.conn_creds.repo_key.repo_name
-            );
-            let mut state_guard = state.write().unwrap();
-            *state_guard = data;
-            state_guard.conn_creds.clone()
-        }
-        Err(err) => {
-            // TODO: handle panics better.
-            panic!("error encountered when initializing sidecar state: {err:?}",)
-        }
-    };
-
     let mut interval = tokio::time::interval(poll_duration);
     loop {
         interval.tick().await;
@@ -300,31 +258,15 @@ impl Store {
         dist_client: DistributionServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
-        bootstrap_data: Option<GetRepositoryContentsResponse>,
+        contents: GetRepositoryContentsResponse,
+        conn_creds: Option<ConnectionCredentials>,
         poll_interval: Duration,
         mode: Mode,
         repo_path: Option<String>,
     ) -> Self {
-        let (tx, rx) = tokio::sync::oneshot::channel::<ConcurrentState>();
-        let state = Arc::new(RwLock::new(match bootstrap_data {
-            None => ConcurrentState {
-                cache: HashMap::new(),
-                repo_version: "".to_string(),
-                conn_creds: ConnectionCredentials {
-                    repo_key: RepositoryKey::default(),
-                    api_key: MetadataValue::from_static(""),
-                    session_key: "".to_string(),
-                },
-            },
-            Some(contents) => ConcurrentState {
-                cache: create_feature_store(contents.namespaces),
-                repo_version: contents.commit_sha,
-                conn_creds: ConnectionCredentials {
-                    repo_key: RepositoryKey::default(),
-                    api_key: MetadataValue::from_static(""),
-                    session_key: "".to_string(),
-                },
-            },
+        let state = Arc::new(RwLock::new(ConcurrentState {
+            cache: create_feature_store(contents.namespaces),
+            repo_version: contents.commit_sha,
         }));
         // Depending on the mode, we will either subscribe to dynamic updates
         // from the filesystem (static mode), or from Lekko backend (default mode).
@@ -339,110 +281,17 @@ impl Store {
             _ => {
                 // TODO: worry about this join handle.
                 tokio::spawn(poll_loop(
-                    rx,
-                    dist_client.clone(),
+                    dist_client,
                     state.clone(),
+                    conn_creds.unwrap(),
                     poll_interval,
                 ));
                 None
             }
         };
         Self {
-            dist_client,
             state,
-            initialize_tx: Mutex::new(Some(tx)),
             _join_handle: jh,
-        }
-    }
-
-    pub async fn deregister(&self) -> Result<(), tonic::Status> {
-        // TODO: block connections and/or figure out multi-tenant sidecar with a semaphore for our state machine.
-        let ConnectionCredentials {
-            session_key,
-            api_key,
-            ..
-        } = self.state.read().unwrap().conn_creds.clone();
-        self.dist_client
-            .clone()
-            .deregister_client(add_api_key(
-                DeregisterClientRequest { session_key },
-                api_key,
-            ))
-            .await
-            .map(|_| ())
-    }
-
-    pub async fn register(
-        &self,
-        repo_key: RepositoryKey,
-        // TODO: handle multiple namespaces by iterating over namespaces or changing GetRepoContents
-        namespaces: &[String],
-        api_key: MetadataValue<Ascii>,
-    ) -> Result<(), tonic::Status> {
-        // Proxy register call first
-        //
-        // Because we do this one line, we should drop the read lock right after.
-        let bootstrap_sha = self.state.read().unwrap().repo_version.clone();
-
-        let session_key = match self
-            .dist_client
-            .clone()
-            .register_client(add_api_key(
-                RegisterClientRequest {
-                    repo_key: Some(repo_key.clone()),
-                    initial_bootstrap_sha: bootstrap_sha,
-                    // TODO sidecar version
-                    sidecar_version: "".to_string(),
-                    namespace_list: Vec::from(namespaces),
-                },
-                api_key.clone(),
-            ))
-            .await
-        {
-            Ok(resp) => resp.into_inner().session_key,
-            Err(err) => {
-                // If we have an error registering, we probably can't reach lekko. If we operate off of a bootstrap
-                // we can continue to function off of that information. Unfortunately, we won't get updates. More
-                // work will have to be done here to recover on a loop. For now, we return an error such that we expect
-                // the SDK or client to retry the registration.
-                return Err(tonic::Status::resource_exhausted(format!(
-                    "error when registering with lekko {err:?}",
-                )));
-            }
-        };
-
-        let success_resp = get_repo_contents_remote(
-            self.dist_client.clone(),
-            add_api_key(
-                GetRepositoryContentsRequest {
-                    repo_key: Some(repo_key.clone()),
-                    ..Default::default()
-                },
-                api_key.clone(),
-            ),
-        )
-        .await?;
-        let mut guard = self.initialize_tx.lock().unwrap();
-        match guard.deref_mut().take() {
-            Some(sender) => sender
-                .send(ConcurrentState {
-                    cache: create_feature_store(success_resp.namespaces),
-                    repo_version: success_resp.commit_sha,
-                    conn_creds: ConnectionCredentials {
-                        repo_key,
-                        api_key,
-                        session_key,
-                    },
-                })
-                .map_err(|_| {
-                    tonic::Status::internal(
-                        "receiver dropped for register rpc. something is seriously wrong",
-                    )
-                }),
-            // If we want multi-tenant sidecars in the future, this will have to change.
-            None => Err(tonic::Status::already_exists(
-                "register has already been called on this sidecar, ignoring register RPC",
-            )),
         }
     }
 
@@ -450,7 +299,6 @@ impl Store {
         let ConcurrentState {
             cache,
             repo_version,
-            conn_creds: _,
         } = &*self.state.read().unwrap();
         return cache
             .get(&FeatureKey {
@@ -463,10 +311,4 @@ impl Store {
                 feature_sha: feature.version.clone(),
             });
     }
-}
-
-fn add_api_key<T: Message>(m: T, api_key: MetadataValue<Ascii>) -> tonic::Request<T> {
-    let mut r = Request::new(m);
-    r.metadata_mut().append(APIKEY, api_key);
-    r
 }
