@@ -79,7 +79,6 @@ impl RepoFS {
                 Ok(nsr) => nsr,
                 Err(e) => return Err(e),
             };
-        // TODO also get owner_name/repo_name, maybe from the `.git`
         Ok(GetRepositoryContentsResponse {
             commit_sha,
             namespaces,

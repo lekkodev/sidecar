@@ -150,7 +150,7 @@ async fn poll_loop(
                 Ok(v) => v,
                 Err(err) => {
                     // TODO: exp backoff when we have errors
-                    warn!("got an error when fetching version {err:?}");
+                    error!("got an error when fetching version {err:?}");
                     continue;
                 }
             };

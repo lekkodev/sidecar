@@ -9,13 +9,12 @@ use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_server:
 use sidecar::repofs::RepoFS;
 
 use hyper::{http::Request, Body};
-use log::log;
+use log::{error, log};
 use sidecar::logging;
 use sidecar::metrics::Metrics;
 use sidecar::service::Service;
 use sidecar::store::Store;
 use sidecar::types::{add_api_key, get_owner_and_repo, ConnectionCredentials, Mode};
-use tonic::Status;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::signal::unix::SignalKind;
@@ -23,6 +22,7 @@ use tokio::time::sleep;
 use tonic::codegen::CompressionEncoding;
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::{Server, Uri};
+use tonic::Status;
 use tower_http::{
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
     LatencyUnit,
@@ -44,11 +44,13 @@ struct Args {
     bind_addr: String,
 
     #[arg(short, long)]
-    /// API Key to connect to Lekko backend. Not required for static mode.
+    /// API Key to connect to Lekko backend. Required for default mode.
+    /// If provided in static mode, metrics will be sent to Lekko.
     api_key: Option<MetadataValue<Ascii>>,
 
     #[arg(short, long)]
     /// repository identifier in the format of owner/repo, like lekkodev/backend-config
+    /// This is required for default mode if not providing a bootstrap.
     repository: Option<String>,
 
     #[arg(value_enum, long, default_value_t, verbatim_doc_comment)]
@@ -112,6 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
 
+    // Check some pre-reqs for the combinations of arguments.
     let bootstrap_data_opt = match (
         &args.bootstrap_path,
         &args.mode,
@@ -134,18 +137,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (bootstrap_data, conn_creds, repo_key) = if matches!(&args.mode, Mode::Default) {
         let api_key = args.api_key.as_ref().unwrap();
+        // To avoid annoyance, if we can determine the name of the repo from the bootstrap, we
+        // do so.
         let repo_key = match &args.repository {
-	    None => bootstrap_data_opt.as_ref().unwrap().repo_key(),
-	    Some(repo) => {
-		get_owner_and_repo(repo).map(
-		    |(owner_name, repo_name)|
-		    RepositoryKey {
-			owner_name,
-			repo_name,
-		    }).ok_or_else(|| Status::invalid_argument(format!("invalid repo identifier: {repo}")))
-	    }
-	}.expect("invalid repository arguments");
-        let session_key = dist_client
+            None => bootstrap_data_opt.as_ref().unwrap().repo_key(),
+            Some(repo) => get_owner_and_repo(repo)
+                .map(|(owner_name, repo_name)| RepositoryKey {
+                    owner_name,
+                    repo_name,
+                })
+                .ok_or_else(|| {
+                    Status::invalid_argument(format!("invalid repo identifier: {repo}"))
+                }),
+        }
+        .expect("invalid repository arguments");
+        let conn_creds_res = dist_client
             .clone()
             .register_client(add_api_key(
                 RegisterClientRequest {
@@ -161,23 +167,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 api_key.clone(),
             ))
             .await
-            // TODO(konrad): don't fail if there is a bootstrap.
-            .map(|resp| resp.into_inner().session_key)?;
+            .map(|resp| ConnectionCredentials {
+                session_key: resp.into_inner().session_key,
+                repo_key: repo_key.clone(),
+                api_key: api_key.clone(),
+            });
 
-        let conn = Some(ConnectionCredentials {
-            repo_key: repo_key.clone(),
-            session_key: session_key.clone(),
-            api_key: api_key.clone(),
-        });
-        match bootstrap_data_opt {
-            None => {
+        // This complicated match lets us handle the failure in registration.
+        // If there is a failure, and we can continue with a boostrap, we do so with an error.
+        match (conn_creds_res, &bootstrap_data_opt) {
+            (Ok(conn), None) => {
                 info!("fetching config on startup since bootstrap not provided");
                 (
                     dist_client
                         .clone()
                         .get_repository_contents(add_api_key(
                             GetRepositoryContentsRequest {
-                                session_key: session_key.clone(),
+                                session_key: conn.session_key.clone(),
                                 repo_key: Some(repo_key.clone()),
                                 ..Default::default()
                             },
@@ -185,12 +191,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ))
                         .await
                         .map(|resp| resp.into_inner())?,
-                    conn,
+                    Some(conn),
                     repo_key,
                 )
             }
-
-            Some(bd) => (bd.load().unwrap(), conn, repo_key),
+            (Ok(conn), Some(bd)) => (bd.load().unwrap(), Some(conn), repo_key),
+            (Err(err), None) => panic!(
+                "error connecting to remote {:?}, cannot serve config without bootstrap",
+                err
+            ),
+            (Err(err), Some(bd)) => {
+                error!("error connecting to remote: {:?}, continuing on bootstrap data to preserve uptime", err);
+                // We still provide connection credentials to let the store try its best to recconect.
+                // We will flood the logs with error messages, but this is on purpose, so that customers
+                // are aware that they are operating off of stale data.
+                (
+                    bd.load().unwrap(),
+                    Some(ConnectionCredentials {
+                        session_key: "".to_string(),
+                        api_key: api_key.clone(),
+                        repo_key: repo_key.clone(),
+                    }),
+                    repo_key.clone(),
+                )
+            }
         }
     } else {
         let bootstrap = bootstrap_data_opt.unwrap();
@@ -259,6 +283,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log::max_level().to_level().unwrap_or(log::Level::Warn),
                 "got sigterm, waiting for shutdown duration before gracefully shutting down"
             );
+	    // TODO make configurable.
             sleep(Duration::from_secs(5)).await;
             log!(
                 log::max_level().to_level().unwrap_or(log::Level::Warn),
