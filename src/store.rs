@@ -262,7 +262,7 @@ impl Store {
         conn_creds: Option<ConnectionCredentials>,
         poll_interval: Duration,
         mode: Mode,
-        repo_path: Option<String>,
+        repo_path: String,
     ) -> Self {
         let state = Arc::new(RwLock::new(ConcurrentState {
             cache: create_feature_store(contents.namespaces),
@@ -271,13 +271,7 @@ impl Store {
         // Depending on the mode, we will either subscribe to dynamic updates
         // from the filesystem (static mode), or from Lekko backend (default mode).
         let jh = match mode {
-            Mode::Static => {
-                let path = match repo_path {
-                    None => panic!("no repo path provided for sidecar configured to be static"),
-                    Some(p) => p,
-                };
-                Some(tokio::spawn(fs_watch(path, state.clone())))
-            }
+            Mode::Static => Some(tokio::spawn(fs_watch(repo_path, state.clone()))),
             _ => {
                 // TODO: worry about this join handle.
                 tokio::spawn(poll_loop(

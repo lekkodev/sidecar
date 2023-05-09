@@ -1,9 +1,7 @@
 use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
 use sidecar::gen::mod_cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
-use sidecar::gen::mod_cli::lekko::backend::v1beta1::{
-    GetRepositoryContentsRequest, RegisterClientRequest, RepositoryKey,
-};
+use sidecar::gen::mod_cli::lekko::backend::v1beta1::RegisterClientRequest;
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_server::ConfigurationServiceServer;
 use sidecar::repofs::RepoFS;
@@ -14,7 +12,7 @@ use sidecar::logging;
 use sidecar::metrics::Metrics;
 use sidecar::service::Service;
 use sidecar::store::Store;
-use sidecar::types::{add_api_key, get_owner_and_repo, ConnectionCredentials, Mode};
+use sidecar::types::{add_api_key, ConnectionCredentials, Mode};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::signal::unix::SignalKind;
@@ -22,7 +20,6 @@ use tokio::time::sleep;
 use tonic::codegen::CompressionEncoding;
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::{Server, Uri};
-use tonic::Status;
 use tower_http::{
     trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
     LatencyUnit,
@@ -48,11 +45,6 @@ struct Args {
     /// If provided in static mode, metrics will be sent to Lekko.
     api_key: Option<MetadataValue<Ascii>>,
 
-    #[arg(short, long)]
-    /// repository identifier in the format of owner/repo, like lekkodev/backend-config
-    /// This is required for default mode if not providing a bootstrap.
-    repository: Option<String>,
-
     #[arg(value_enum, long, default_value_t, verbatim_doc_comment)]
     /// Mode can be one of:
     ///   default - initialize from a bootstrap, poll local state from remote and evaluate locally.
@@ -67,9 +59,8 @@ struct Args {
 
     #[arg(short, long)]
     /// Absolute path to the directory on disk that contains the .git folder.
-    /// This flag is required for static mode, and optional for default mode
-    /// if bootstrap behavior is required.
-    bootstrap_path: Option<String>,
+    /// This is required to ensure availability either in static or default mode.
+    repo_path: String,
 }
 
 fn parse_duration(arg: &str) -> Result<std::time::Duration, humantime::DurationError> {
@@ -114,124 +105,63 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
 
-    // Check some pre-reqs for the combinations of arguments.
-    let bootstrap_data_opt = match (
-        &args.bootstrap_path,
-        &args.mode,
-        &args.repository,
-        &args.api_key,
-    ) {
-        (None, Mode::Static, _, _) => {
-            panic!("no bootstrap provided for sidecar configured to be static")
-        }
+    let bootstrap_data = RepoFS::new(args.repo_path.clone()).expect("invalid repository");
+    let initial_sha = bootstrap_data
+        .git_commit_sha()
+        .expect("invalid repository sha");
+    let repo_key = bootstrap_data
+        .repo_key()
+        .expect("invalid remote information in repo path");
 
-        (_, Mode::Default, _, None) => {
-            panic!("api key not provided")
-        }
-        (None, Mode::Default, None, _) => {
-            panic!("if no bootstrap is provided, repository is a required argument")
-        }
-        (Some(rp), _, _, _) => Some(RepoFS::new(rp.to_owned()).unwrap()),
-        _ => None,
-    };
+    let conn_creds = match &args.mode {
+        Mode::Static => None,
+        Mode::Default => {
+            let api_key = args.api_key.as_ref().unwrap();
+            let conn_creds_res = dist_client
+                .clone()
+                .register_client(add_api_key(
+                    RegisterClientRequest {
+                        repo_key: Some(repo_key.clone()),
+                        initial_bootstrap_sha: initial_sha,
+                        // TODO sidecar version
+                        sidecar_version: "".to_string(),
+                        namespace_list: vec![],
+                    },
+                    api_key.clone(),
+                ))
+                .await
+                .map(|resp| ConnectionCredentials {
+                    session_key: resp.into_inner().session_key,
+                    repo_key: repo_key.clone(),
+                    api_key: api_key.clone(),
+                });
 
-    let (bootstrap_data, conn_creds, repo_key) = if matches!(&args.mode, Mode::Default) {
-        let api_key = args.api_key.as_ref().unwrap();
-        // To avoid annoyance, if we can determine the name of the repo from the bootstrap, we
-        // do so.
-        let repo_key = match &args.repository {
-            None => bootstrap_data_opt.as_ref().unwrap().repo_key(),
-            Some(repo) => get_owner_and_repo(repo)
-                .map(|(owner_name, repo_name)| RepositoryKey {
-                    owner_name,
-                    repo_name,
-                })
-                .ok_or_else(|| {
-                    Status::invalid_argument(format!("invalid repo identifier: {repo}"))
-                }),
-        }
-        .expect("invalid repository arguments");
-        let conn_creds_res = dist_client
-            .clone()
-            .register_client(add_api_key(
-                RegisterClientRequest {
-                    repo_key: Some(repo_key.clone()),
-                    initial_bootstrap_sha: bootstrap_data_opt
-                        .as_ref()
-                        .map(|resp| resp.git_commit_sha().unwrap())
-                        .unwrap_or_else(|| "".to_string()),
-                    // TODO sidecar version
-                    sidecar_version: "".to_string(),
-                    namespace_list: vec![],
-                },
-                api_key.clone(),
-            ))
-            .await
-            .map(|resp| ConnectionCredentials {
-                session_key: resp.into_inner().session_key,
-                repo_key: repo_key.clone(),
-                api_key: api_key.clone(),
-            });
-
-        // This complicated match lets us handle the failure in registration.
-        // If there is a failure, and we can continue with a boostrap, we do so with an error.
-        match (conn_creds_res, &bootstrap_data_opt) {
-            (Ok(conn), None) => {
-                info!("fetching config on startup since bootstrap not provided");
-                (
-                    dist_client
-                        .clone()
-                        .get_repository_contents(add_api_key(
-                            GetRepositoryContentsRequest {
-                                session_key: conn.session_key.clone(),
-                                repo_key: Some(repo_key.clone()),
-                                ..Default::default()
-                            },
-                            api_key.clone(),
-                        ))
-                        .await
-                        .map(|resp| resp.into_inner())?,
-                    Some(conn),
-                    repo_key,
-                )
-            }
-            (Ok(conn), Some(bd)) => (bd.load().unwrap(), Some(conn), repo_key),
-            (Err(err), None) => panic!(
-                "error connecting to remote {:?}, cannot serve config without bootstrap",
-                err
-            ),
-            (Err(err), Some(bd)) => {
-                error!("error connecting to remote: {:?}, continuing on bootstrap data to preserve uptime", err);
-                // We still provide connection credentials to let the store try its best to recconect.
-                // We will flood the logs with error messages, but this is on purpose, so that customers
-                // are aware that they are operating off of stale data.
-                (
-                    bd.load().unwrap(),
+            // This complicated match lets us handle the failure in registration.
+            // If there is a failure, and we can continue with a boostrap, we do so with an error.
+            match conn_creds_res {
+                Ok(conn) => Some(conn),
+                Err(err) => {
+                    error!("error connecting to remote: {:?}, continuing on bootstrap data to preserve uptime", err);
+                    // We still provide connection credentials to let the store try its best to recconect.
+                    // We will flood the logs with error messages, but this is on purpose, so that customers
+                    // are aware that they are operating off of stale data.
                     Some(ConnectionCredentials {
                         session_key: "".to_string(),
                         api_key: api_key.clone(),
                         repo_key: repo_key.clone(),
-                    }),
-                    repo_key.clone(),
-                )
+                    })
+                }
             }
         }
-    } else {
-        let bootstrap = bootstrap_data_opt.unwrap();
-        (
-            bootstrap.load().unwrap(),
-            None,
-            bootstrap.repo_key().unwrap(),
-        )
     };
 
     let store = Store::new(
         dist_client.clone(),
-        bootstrap_data,
+        bootstrap_data.load().expect("error loading info"),
         conn_creds,
         args.poll_internal,
         args.mode.to_owned(),
-        args.bootstrap_path,
+        args.repo_path,
     );
     let service = ConfigurationServiceServer::new(Service {
         config_client,
@@ -283,7 +213,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log::max_level().to_level().unwrap_or(log::Level::Warn),
                 "got sigterm, waiting for shutdown duration before gracefully shutting down"
             );
-	    // TODO make configurable.
+            // TODO make configurable.
             sleep(Duration::from_secs(5)).await;
             log!(
                 log::max_level().to_level().unwrap_or(log::Level::Warn),
