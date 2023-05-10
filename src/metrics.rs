@@ -32,12 +32,13 @@ use crate::{
 // and delivering them to lekko backend.
 pub struct Metrics {
     tx: Sender<TrackFlagEvaluationEvent>,
+    api_key: MetadataValue<Ascii>,
 }
 
 #[derive(Debug)]
 pub struct TrackFlagEvaluationEvent {
-    apikey: MetadataValue<Ascii>, // TODO: receive apikey during registration and store it.
     event: FlagEvaluationEvent,
+    api_key: MetadataValue<Ascii>,
 }
 
 // TODO: Send batched flag evaluation metrics back to the backend after local evaluation.
@@ -46,6 +47,7 @@ impl Metrics {
         dist_client: DistributionServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
+        api_key: MetadataValue<Ascii>,
     ) -> Self {
         // create a sync channel to send and receive metrics.
         // approximate size of each event is 1KB. this buffer is sized to not exceed 1MB total memory.
@@ -55,8 +57,7 @@ impl Metrics {
         spawn(async {
             Metrics::worker(rx, dist_client).await;
         });
-
-        Self { tx }
+        Self { tx, api_key }
     }
 
     // Sends a flag evaluation event to an async thread for delivery to lekko backend.
@@ -67,8 +68,6 @@ impl Metrics {
         feature_data: &FeatureData,
         context: &HashMap<String, Value>,
         result_path: &[usize],
-        // TODO: we should somehow get the api key from registration, instead of relying on it every time.
-        apikey: &MetadataValue<Ascii>,
     ) {
         let event = FlagEvaluationEvent {
             repo_key: Some(feature_params.rk.clone()),
@@ -89,8 +88,8 @@ impl Metrics {
         // receiver has dropped or been closed. In either case, we drop the metric and print the error.
         // try_send is non-blocking.
         let result = self.tx.try_send(TrackFlagEvaluationEvent {
-            apikey: apikey.clone(),
             event,
+            api_key: self.api_key.clone(),
         });
         if let Err(e) = result {
             warn!("failed to send metrics to internal metrics handler {e:?}");
@@ -125,21 +124,18 @@ impl Metrics {
     }
 
     async fn send_flag_evaluation(
-        dist_client: DistributionServiceClient<
+        mut dist_client: DistributionServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
         event: TrackFlagEvaluationEvent,
     ) -> Result<(), tonic::Status> {
         let mut req = Request::new(SendFlagEvaluationMetricsRequest {
             events: vec![event.event],
-            // TODO: hookup a oneshot to populate some concurrent state for the metrics sender.
+            // TODO: worry about sessions later.
             session_key: "".to_string(),
         });
-        req.metadata_mut().append(APIKEY, event.apikey);
-        dist_client
-            .clone()
-            .send_flag_evaluation_metrics(req)
-            .await?;
+        req.metadata_mut().append(APIKEY, event.api_key);
+        dist_client.send_flag_evaluation_metrics(req).await?;
         Ok(())
     }
 

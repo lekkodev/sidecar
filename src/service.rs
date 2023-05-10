@@ -1,18 +1,13 @@
-use std::{collections::HashMap, ops::DerefMut, sync::Mutex};
+use std::collections::HashMap;
 
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
-use log::error;
 use prost_types::{value::Kind, Any};
-use tonic::{
-    body::BoxBody,
-    metadata::{Ascii, MetadataMap, MetadataValue},
-    Request, Response, Status,
-};
+use tonic::{body::BoxBody, metadata::MetadataMap, Request, Response, Status};
 
 use crate::{
     evaluate::evaluator::evaluate,
-    gen::mod_cli::lekko::feature::v1beta1::FeatureType,
+    gen::mod_cli::lekko::{backend::v1beta1::RepositoryKey, feature::v1beta1::FeatureType},
     gen::mod_sdk::lekko::client::v1beta1::{
         configuration_service_client::ConfigurationServiceClient,
         configuration_service_server::ConfigurationService, DeregisterRequest, DeregisterResponse,
@@ -24,26 +19,8 @@ use crate::{
     logging::InsertLogFields,
     metrics::Metrics,
     store::Store,
-    types::{self, convert_repo_key, FeatureRequestParams, APIKEY},
+    types::{self, convert_repo_key, FeatureRequestParams, Mode},
 };
-
-// Mode represents the running mode of the sidecar.
-//
-// Default implies waiting for a Register call, fetching from a bootstrap,
-// and evaluating locally while polling for updates.
-//
-// Consistent always fetches from Lekko ignoring local caches, resulting in strong
-// consistency.
-//
-// Static fetches from the bootstrap and always evaluates against those values. No
-// connection is made to Lekko services.
-#[derive(clap::ValueEnum, Clone, Default, Debug)]
-pub enum Mode {
-    #[default]
-    Default,
-    Consistent,
-    Static,
-}
 
 // This is the main rpc entrypoint into the sidecar. All host pods will communicate with the
 // sidecar via this Service, using the language-native SDK.
@@ -52,8 +29,8 @@ pub struct Service {
         ConfigurationServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
     pub store: Store,
     pub mode: Mode,
-    pub metrics: Metrics,
-    pub shutdown_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    pub metrics: Option<Metrics>,
+    pub repo_key: RepositoryKey,
 }
 
 trait SharedRequest {
@@ -61,21 +38,10 @@ trait SharedRequest {
 }
 
 impl Service {
-    // Sets the headers that we wish to forward to lekko. The apikey header is copied over as
-    // the server needs it to authenticate the caller.
-    fn proxy_headers<T>(&self, proxy_request: &mut Request<T>, incoming_headers: &MetadataMap) {
-        if let Some(apikey) = incoming_headers.get(APIKEY) {
-            proxy_request
-                .metadata_mut()
-                .append(APIKEY, apikey.to_owned());
-        }
-    }
-
     fn get_value_local(
         &self,
         feature: FeatureRequestParams,
         context: &HashMap<String, Value>,
-        api_key: MetadataValue<Ascii>,
         requested_type: FeatureType,
     ) -> Result<Any, tonic::Status> {
         let feature_data = self
@@ -91,13 +57,9 @@ impl Service {
             )));
         }
         let eval_result = evaluate(&feature_data.feature, context)?;
-        self.metrics.track_flag_evaluation(
-            &feature,
-            &feature_data,
-            context,
-            &eval_result.1,
-            &api_key,
-        );
+        if let Some(m) = self.metrics.as_ref() {
+            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
+        }
         Ok(eval_result.0)
     }
 }
@@ -108,28 +70,19 @@ impl ConfigurationService for Service {
         &self,
         request: Request<RegisterRequest>,
     ) -> Result<tonic::Response<RegisterResponse>, tonic::Status> {
-        if matches!(self.mode, Mode::Consistent) || matches!(self.mode, Mode::Static) {
-            // Here we can effectively ignore the register call.
-            // We should reconsider some design here to make sure the SDK matches the sidecar configuration.
-            return Ok(Response::new(RegisterResponse::default()));
+        let requested_rk = request
+            .into_inner()
+            .repo_key
+            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
+        if self.repo_key.owner_name != requested_rk.owner_name
+            || self.repo_key.repo_name != requested_rk.repo_name
+        {
+            return Err(Status::invalid_argument(format!(
+                "registration mismatch: requested_repo: {:?}, vs. repo: {:?}",
+                requested_rk, self.repo_key
+            )));
         }
-        let apikey = request
-            .metadata()
-            .get(APIKEY)
-            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
-            .to_owned();
-        let request = request.into_inner();
-        self.store
-            .register(
-                convert_repo_key(
-                    &request
-                        .repo_key
-                        .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
-                ),
-                &request.namespace_list,
-                apikey,
-            )
-            .await?;
+
         Ok(Response::new(RegisterResponse::default()))
     }
 
@@ -137,32 +90,6 @@ impl ConfigurationService for Service {
         &self,
         _request: Request<DeregisterRequest>,
     ) -> Result<tonic::Response<DeregisterResponse>, tonic::Status> {
-        // Only proxy register in the case of default. We still continue here
-        // to consume the oneshot even in static or consistent mode.
-        if matches!(self.mode, Mode::Default) {
-            match self.store.deregister().await {
-                Ok(_) => {}
-                Err(err) => {
-                    error!("error encountered when proxying deregistration. continuing with shutdown {err:?}")
-                }
-            }
-        }
-        // There is a potential race condition here of if we got SIGTERM,
-        // we never return this error message because the oneshot has released our
-        // graceful shutdown handler and we exit too fast. This is unlikely, and worst
-        // case results in an error message for the caller.
-
-        let mut guard = self.shutdown_tx.lock().unwrap();
-        match guard.deref_mut().take() {
-            Some(sender) => sender
-                .send(())
-                .map_err(|_| tonic::Status::internal("shutdown already initiated"))?,
-            None => {
-                return Err(tonic::Status::already_exists(
-                    "deregister has already been called on this sidecar, ignoring deregister RPC",
-                ))
-            }
-        }
         Ok(Response::new(DeregisterResponse::default()))
     }
 
@@ -170,18 +97,6 @@ impl ConfigurationService for Service {
         &self,
         request: Request<GetBoolValueRequest>,
     ) -> Result<tonic::Response<GetBoolValueResponse>, tonic::Status> {
-        let apikey = request
-            .metadata()
-            .get(APIKEY)
-            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
-            .to_owned();
-
-        if matches!(self.mode, Mode::Consistent) {
-            let mut proxy_req = Request::new(request.get_ref().clone());
-            self.proxy_headers(&mut proxy_req, request.metadata());
-            return self.config_client.clone().get_bool_value(proxy_req).await;
-        }
-
         let inner = request.into_inner();
         let params = FeatureRequestParams {
             rk: convert_repo_key(
@@ -193,7 +108,7 @@ impl ConfigurationService for Service {
             namespace: inner.namespace.clone(),
             feature: inner.key.clone(),
         };
-        let result = &self.get_value_local(params, &inner.context, apikey, FeatureType::Bool)?;
+        let result = &self.get_value_local(params, &inner.context, FeatureType::Bool)?;
 
         Ok(inner.insert_log_fields(Response::new(GetBoolValueResponse {
             value: types::from_any::<bool>(result)
@@ -205,18 +120,6 @@ impl ConfigurationService for Service {
         &self,
         request: Request<GetIntValueRequest>,
     ) -> Result<tonic::Response<GetIntValueResponse>, tonic::Status> {
-        let apikey = request
-            .metadata()
-            .get(APIKEY)
-            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
-            .to_owned();
-
-        if matches!(self.mode, Mode::Consistent) {
-            let mut proxy_req = Request::new(request.get_ref().clone());
-            self.proxy_headers(&mut proxy_req, request.metadata());
-            return self.config_client.clone().get_int_value(proxy_req).await;
-        }
-
         let inner = request.into_inner();
         let params = FeatureRequestParams {
             rk: convert_repo_key(
@@ -231,7 +134,6 @@ impl ConfigurationService for Service {
         let i = types::from_any::<i64>(&self.get_value_local(
             params,
             &inner.context,
-            apikey,
             FeatureType::Int,
         )?)
         .map_err(|e| tonic::Status::internal(e.to_string()))?;
@@ -242,18 +144,6 @@ impl ConfigurationService for Service {
         &self,
         request: Request<GetFloatValueRequest>,
     ) -> Result<tonic::Response<GetFloatValueResponse>, tonic::Status> {
-        let apikey = request
-            .metadata()
-            .get(APIKEY)
-            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
-            .to_owned();
-
-        if matches!(self.mode, Mode::Consistent) {
-            let mut proxy_req = Request::new(request.get_ref().clone());
-            self.proxy_headers(&mut proxy_req, request.metadata());
-            return self.config_client.clone().get_float_value(proxy_req).await;
-        }
-
         let inner = request.into_inner();
         let params = FeatureRequestParams {
             rk: convert_repo_key(
@@ -269,7 +159,6 @@ impl ConfigurationService for Service {
         let f = types::from_any::<f64>(&self.get_value_local(
             params,
             &inner.context,
-            apikey,
             FeatureType::Float,
         )?)
         .map_err(|e| tonic::Status::internal(e.to_string()))?;
@@ -280,18 +169,6 @@ impl ConfigurationService for Service {
         &self,
         request: Request<GetStringValueRequest>,
     ) -> Result<tonic::Response<GetStringValueResponse>, tonic::Status> {
-        let apikey = request
-            .metadata()
-            .get(APIKEY)
-            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
-            .to_owned();
-
-        if matches!(self.mode, Mode::Consistent) {
-            let mut proxy_req = Request::new(request.get_ref().clone());
-            self.proxy_headers(&mut proxy_req, request.metadata());
-            return self.config_client.clone().get_string_value(proxy_req).await;
-        }
-
         let inner = request.into_inner();
         let params = FeatureRequestParams {
             rk: convert_repo_key(
@@ -307,7 +184,6 @@ impl ConfigurationService for Service {
         let s = types::from_any::<String>(&self.get_value_local(
             params,
             &inner.context,
-            apikey,
             FeatureType::String,
         )?)
         .map_err(|e| tonic::Status::internal(e.to_string()))?;
@@ -318,17 +194,6 @@ impl ConfigurationService for Service {
         &self,
         request: Request<GetProtoValueRequest>,
     ) -> Result<tonic::Response<GetProtoValueResponse>, tonic::Status> {
-        let apikey = request
-            .metadata()
-            .get(APIKEY)
-            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
-            .to_owned();
-
-        if matches!(self.mode, Mode::Consistent) {
-            let mut proxy_req = Request::new(request.get_ref().clone());
-            self.proxy_headers(&mut proxy_req, request.metadata());
-            return self.config_client.clone().get_proto_value(proxy_req).await;
-        }
         let inner = request.into_inner();
         let params = FeatureRequestParams {
             rk: convert_repo_key(
@@ -341,7 +206,7 @@ impl ConfigurationService for Service {
             feature: inner.key.clone(),
         };
 
-        let any = self.get_value_local(params, &inner.context, apikey, FeatureType::Proto)?;
+        let any = self.get_value_local(params, &inner.context, FeatureType::Proto)?;
         Ok(inner.insert_log_fields(Response::new(GetProtoValueResponse { value: Some(any) })))
     }
 
@@ -349,18 +214,6 @@ impl ConfigurationService for Service {
         &self,
         request: Request<GetJsonValueRequest>,
     ) -> Result<tonic::Response<GetJsonValueResponse>, tonic::Status> {
-        let apikey = request
-            .metadata()
-            .get(APIKEY)
-            .ok_or_else(|| Status::invalid_argument("no apikey header provided"))?
-            .to_owned();
-
-        if matches!(self.mode, Mode::Consistent) {
-            let mut proxy_req = Request::new(request.get_ref().clone());
-            self.proxy_headers(&mut proxy_req, request.metadata());
-            return self.config_client.clone().get_json_value(proxy_req).await;
-        }
-
         let inner = request.into_inner();
         let v = types::from_any::<prost_types::Value>(
             &self.get_value_local(
@@ -375,7 +228,6 @@ impl ConfigurationService for Service {
                     feature: inner.key.clone(),
                 },
                 &inner.context,
-                apikey,
                 FeatureType::Json,
             )?,
         )
