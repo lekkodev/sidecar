@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, net::SocketAddr};
 
 use futures::{stream::FuturesUnordered, StreamExt};
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
 use itertools::Itertools;
 use log::{error, warn};
+use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::{
     select, spawn,
     sync::mpsc::{channel, Receiver, Sender},
@@ -149,5 +150,21 @@ impl Metrics {
             }
         }
         String::from("unknown")
+    }
+}
+
+// RuntimeMetrics initializes a prometheus scrape endpoint on the metrics_bind_addr and provides a set of runtime metrics for the sidecar app
+pub struct RuntimeMetrics {
+    pub startup_counter: String
+}
+
+impl RuntimeMetrics {
+    pub fn new(metrics_bind_addr: SocketAddr) -> Self {
+        let builder = PrometheusBuilder::new();
+        let builder = builder.with_http_listener(metrics_bind_addr);
+        builder.install().unwrap();
+        Self {
+            startup_counter: "lekko_sidecar_startup_counter".to_string()
+        }
     }
 }
