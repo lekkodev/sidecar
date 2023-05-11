@@ -1,5 +1,6 @@
 use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
+use metrics::counter;
 use sidecar::gen::mod_cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 use sidecar::gen::mod_cli::lekko::backend::v1beta1::RegisterClientRequest;
 use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
@@ -9,6 +10,7 @@ use sidecar::repofs::RepoFS;
 use hyper::{http::Request, Body};
 use log::{error, log};
 use sidecar::logging;
+use sidecar::metrics::RuntimeMetrics;
 use sidecar::metrics::Metrics;
 use sidecar::service::Service;
 use sidecar::store::Store;
@@ -45,6 +47,10 @@ struct Args {
     /// If provided in static mode, metrics will be sent to Lekko.
     api_key: Option<MetadataValue<Ascii>>,
 
+    #[arg(long, default_value_t=String::from("0.0.0.0:9000"))]
+    /// Address to bind to on current host.
+    metrics_bind_addr: String,
+
     #[arg(value_enum, long, default_value_t, verbatim_doc_comment)]
     /// Mode can be one of:
     ///   default - initialize from a bootstrap, poll local state from remote and evaluate locally.
@@ -70,6 +76,7 @@ fn parse_duration(arg: &str) -> Result<std::time::Duration, humantime::DurationE
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     logging::init();
+        
     let args = Args::parse();
     let addr = match args.bind_addr.parse::<SocketAddr>() {
         Err(err) => panic!("parsing bind_addr {} failed: {err:?}", args.bind_addr),
@@ -79,6 +86,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(err) => panic!("parsing lekko_addr {} failed: {err:?}", args.lekko_addr),
         Ok(a) => a,
     };
+
+    let metrics_bind_addr = match args.metrics_bind_addr.parse::<std::net::SocketAddr>() {
+        Err(err) => panic!("parsing metrics_bind_addr {} failed: {err:?}", args.metrics_bind_addr),
+        Ok(a) => a,
+    };
+
+    
+    let runtime_metrics = RuntimeMetrics::new(metrics_bind_addr);
+    counter!(runtime_metrics.startup_counter, 1);
+
     log!(
         log::max_level().to_level().unwrap_or(log::Level::Warn),
         "binding server to: {:} with args: {:?}",

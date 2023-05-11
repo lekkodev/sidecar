@@ -31,4 +31,6 @@ git-repository = { version = "0.29.0", features = ["max-performance-safe"], defa
 notify = { version = "5.1.0", default-features = false, features = ["macos_fsevent"] }
 regex = "1.8.1"
 lazy_static = "1.4.0"
+metrics-exporter-prometheus = "0.12.1"
+metrics = "0.21.0"
 
