@@ -4,7 +4,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
 use itertools::Itertools;
-use log::{error, info, warn};
+use log::{debug, error, warn};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::{
     select, spawn,
@@ -111,7 +111,9 @@ impl Metrics {
         loop {
             select! {
                 _ = interval.tick() => {
-                    futures.push(Metrics::send_flag_evaluations(dist_client.clone(), buffer.drain(..).collect(), api_key.clone()));
+                    if !buffer.is_empty() {
+                        futures.push(Metrics::send_flag_evaluations(dist_client.clone(), buffer.drain(..).collect(), api_key.clone()));
+                    }
                 },
                 // recv returns None if the channel is closed or the sender goes out of scope. We
                 // don't expect this to happen.
@@ -138,7 +140,7 @@ impl Metrics {
         events: Vec<TrackFlagEvaluationEvent>,
         api_key: MetadataValue<Ascii>,
     ) -> Result<(), tonic::Status> {
-        info!("sending {} metrics", events.len());
+        debug!("sending {} flag evaluation metrics to lekko", events.len());
         let mut req = Request::new(SendFlagEvaluationMetricsRequest {
             events: events.into_iter().map(|event| event.event).collect(),
             // TODO: worry about sessions later.
