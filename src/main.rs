@@ -10,8 +10,8 @@ use sidecar::repofs::RepoFS;
 use hyper::{http::Request, Body};
 use log::{error, log};
 use sidecar::logging;
-use sidecar::metrics::RuntimeMetrics;
 use sidecar::metrics::Metrics;
+use sidecar::metrics::RuntimeMetrics;
 use sidecar::service::Service;
 use sidecar::store::Store;
 use sidecar::types::{add_api_key, ConnectionCredentials, Mode};
@@ -76,7 +76,7 @@ fn parse_duration(arg: &str) -> Result<std::time::Duration, humantime::DurationE
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     logging::init();
-        
+
     let args = Args::parse();
     let addr = match args.bind_addr.parse::<SocketAddr>() {
         Err(err) => panic!("parsing bind_addr {} failed: {err:?}", args.bind_addr),
@@ -88,11 +88,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let metrics_bind_addr = match args.metrics_bind_addr.parse::<std::net::SocketAddr>() {
-        Err(err) => panic!("parsing metrics_bind_addr {} failed: {err:?}", args.metrics_bind_addr),
+        Err(err) => panic!(
+            "parsing metrics_bind_addr {} failed: {err:?}",
+            args.metrics_bind_addr
+        ),
         Ok(a) => a,
     };
 
-    
     let runtime_metrics = RuntimeMetrics::new(metrics_bind_addr);
     counter!(runtime_metrics.startup_counter, 1);
 
@@ -133,7 +135,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conn_creds = match &args.mode {
         Mode::Static => None,
         Mode::Default => {
-            let api_key = args.api_key.as_ref().unwrap();
+            let api_key = args
+                .api_key
+                .as_ref()
+                .expect("no api key provided in default mode");
             let conn_creds_res = dist_client
                 .clone()
                 .register_client(add_api_key(

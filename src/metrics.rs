@@ -1,10 +1,10 @@
-use std::{collections::HashMap, net::SocketAddr};
+use std::{collections::HashMap, net::SocketAddr, time::Duration};
 
 use futures::{stream::FuturesUnordered, StreamExt};
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
 use itertools::Itertools;
-use log::{error, warn};
+use log::{error, info, warn};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::{
     select, spawn,
@@ -33,13 +33,11 @@ use crate::{
 // and delivering them to lekko backend.
 pub struct Metrics {
     tx: Sender<TrackFlagEvaluationEvent>,
-    api_key: MetadataValue<Ascii>,
 }
 
 #[derive(Debug)]
 pub struct TrackFlagEvaluationEvent {
     event: FlagEvaluationEvent,
-    api_key: MetadataValue<Ascii>,
 }
 
 // TODO: Send batched flag evaluation metrics back to the backend after local evaluation.
@@ -56,9 +54,9 @@ impl Metrics {
         let (tx, rx) = channel(1024);
         // spawn a new thread that receives metrics and sends them over rpc
         spawn(async {
-            Metrics::worker(rx, dist_client).await;
+            Metrics::worker(rx, dist_client, api_key).await;
         });
-        Self { tx, api_key }
+        Self { tx }
     }
 
     // Sends a flag evaluation event to an async thread for delivery to lekko backend.
@@ -88,10 +86,7 @@ impl Metrics {
         // Try to send the event over the channel. This can fail if (a) the buffer is full, or (b) the
         // receiver has dropped or been closed. In either case, we drop the metric and print the error.
         // try_send is non-blocking.
-        let result = self.tx.try_send(TrackFlagEvaluationEvent {
-            event,
-            api_key: self.api_key.clone(),
-        });
+        let result = self.tx.try_send(TrackFlagEvaluationEvent { event });
         if let Err(e) = result {
             warn!("failed to send metrics to internal metrics handler {e:?}");
         }
@@ -102,25 +97,37 @@ impl Metrics {
         dist_client: DistributionServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
+        api_key: MetadataValue<Ascii>,
     ) {
         // Pool of futures allows this thread to not block on I/O, sending out multiple
         // metrics at once while also receiving from the channel.
         let mut futures = FuturesUnordered::new();
 
+        // preallocate memory to avoid reallocation when receiving messages.
+        let mut buffer = Vec::with_capacity(1024);
+
+        let mut interval = tokio::time::interval(Duration::from_secs(10));
+
         loop {
             select! {
-                // recv returns None if the channel is closed or the sender goes out of scope. We
-                // don't expect this to happen.
-                Some(event) = rx.recv() => {
-                    futures.push(Metrics::send_flag_evaluation(dist_client.clone(), event));
-                },
-                Some(result) = futures.next() => {
-                    if let Err(e) = result {
-                        error!("error handling send flag evaluation future {e:?}");
-                    }
-                },
-                else => break,
-            }
+            _ = interval.tick() => {
+                        futures.push(Metrics::send_flag_evaluation(dist_client.clone(), buffer.drain(..).collect(), api_key.clone()));
+            },
+                    // recv returns None if the channel is closed or the sender goes out of scope. We
+                    // don't expect this to happen.
+                    Some(event) = rx.recv() => {
+                        buffer.push(event);
+                        if buffer.len() >= 1024 {
+                futures.push(Metrics::send_flag_evaluation(dist_client.clone(), buffer.drain(..).collect(), api_key.clone()));
+                        }
+                    },
+                    Some(result) = futures.next() => {
+                        if let Err(e) = result {
+                            error!("error handling send flag evaluation future {e:?}");
+                        }
+                    },
+                    else => break,
+                }
         }
     }
 
@@ -128,14 +135,16 @@ impl Metrics {
         mut dist_client: DistributionServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
-        event: TrackFlagEvaluationEvent,
+        events: Vec<TrackFlagEvaluationEvent>,
+        api_key: MetadataValue<Ascii>,
     ) -> Result<(), tonic::Status> {
+        info!("sending {} metrics", events.len());
         let mut req = Request::new(SendFlagEvaluationMetricsRequest {
-            events: vec![event.event],
+            events: events.into_iter().map(|event| event.event).collect(),
             // TODO: worry about sessions later.
             session_key: "".to_string(),
         });
-        req.metadata_mut().append(APIKEY, event.api_key);
+        req.metadata_mut().append(APIKEY, api_key);
         dist_client.send_flag_evaluation_metrics(req).await?;
         Ok(())
     }
@@ -155,7 +164,7 @@ impl Metrics {
 
 // RuntimeMetrics initializes a prometheus scrape endpoint on the metrics_bind_addr and provides a set of runtime metrics for the sidecar app
 pub struct RuntimeMetrics {
-    pub startup_counter: String
+    pub startup_counter: String,
 }
 
 impl RuntimeMetrics {
@@ -164,7 +173,7 @@ impl RuntimeMetrics {
         let builder = builder.with_http_listener(metrics_bind_addr);
         builder.install().unwrap();
         Self {
-            startup_counter: "lekko_sidecar_startup_counter".to_string()
+            startup_counter: "lekko_sidecar_startup_counter".to_string(),
         }
     }
 }
