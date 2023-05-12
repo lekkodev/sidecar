@@ -110,28 +110,28 @@ impl Metrics {
 
         loop {
             select! {
-            _ = interval.tick() => {
-                        futures.push(Metrics::send_flag_evaluation(dist_client.clone(), buffer.drain(..).collect(), api_key.clone()));
-            },
-                    // recv returns None if the channel is closed or the sender goes out of scope. We
-                    // don't expect this to happen.
-                    Some(event) = rx.recv() => {
-                        buffer.push(event);
-                        if buffer.len() >= 1024 {
-                futures.push(Metrics::send_flag_evaluation(dist_client.clone(), buffer.drain(..).collect(), api_key.clone()));
-                        }
-                    },
-                    Some(result) = futures.next() => {
-                        if let Err(e) = result {
-                            error!("error handling send flag evaluation future {e:?}");
-                        }
-                    },
-                    else => break,
-                }
+                _ = interval.tick() => {
+                    futures.push(Metrics::send_flag_evaluations(dist_client.clone(), buffer.drain(..).collect(), api_key.clone()));
+                },
+                // recv returns None if the channel is closed or the sender goes out of scope. We
+                // don't expect this to happen.
+                Some(event) = rx.recv() => {
+                    buffer.push(event);
+                    if buffer.len() >= 1024 {
+                        futures.push(Metrics::send_flag_evaluations(dist_client.clone(), buffer.drain(..).collect(), api_key.clone()));
+                    }
+                },
+                Some(result) = futures.next() => {
+                    if let Err(e) = result {
+                        error!("error handling send flag evaluation future {e:?}");
+                    }
+                },
+                else => break,
+            }
         }
     }
 
-    async fn send_flag_evaluation(
+    async fn send_flag_evaluations(
         mut dist_client: DistributionServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
