@@ -15,6 +15,7 @@ use sidecar::metrics::RuntimeMetrics;
 use sidecar::service::Service;
 use sidecar::store::Store;
 use sidecar::types::{add_api_key, ConnectionCredentials, Mode};
+use std::fmt::Debug;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::signal::unix::SignalKind;
@@ -29,8 +30,8 @@ use tower_http::{
 use tracing::{info, Level, Span};
 
 // Struct containing all the cmd-line args we accept
-#[derive(Parser, Debug)]
-#[clap(author="Lekko", version="0.1.0", about, long_about = None)]
+#[derive(Parser)]
+#[clap(author="Lekko", version="0.0.12", about, long_about = None)]
 /// Lekko sidecar that provides the host application with config
 /// updates from Lekko and performs local evaluation.
 struct Args {
@@ -61,12 +62,19 @@ struct Args {
     #[arg(short, long, value_parser=parse_duration, default_value="15s")]
     /// How often to poll for a new version of a configuration repository.
     /// If this duration is too short, Lekko may apply rate limits.
-    poll_internal: Duration,
+    poll_interval: Duration,
 
     #[arg(short, long)]
     /// Absolute path to the directory on disk that contains the .git folder.
     /// This is required to ensure availability either in static or default mode.
     repo_path: String,
+}
+
+impl Debug for Args {
+    // We manually implement Debug in order to avoid printing the api key.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{{ lekko_addr: {}, bind_addr: {} api_key: {:?}, metrics_bind_addr: {}, mode: {:?}, poll_interval: {:?}, repo_path: {} }}", self.lekko_addr, self.bind_addr, self.api_key.as_ref().map(|_| "Some(<lekko api key>)"), self.metrics_bind_addr, self.mode, self.poll_interval, self.repo_path))
+    }
 }
 
 fn parse_duration(arg: &str) -> Result<std::time::Duration, humantime::DurationError> {
@@ -181,7 +189,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         dist_client.clone(),
         bootstrap_data.load().expect("error loading info"),
         conn_creds,
-        args.poll_internal,
+        args.poll_interval,
         args.mode.to_owned(),
         args.repo_path,
     );
@@ -201,7 +209,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Server::builder()
         .layer(
             TraceLayer::new_for_grpc()
-                .make_span_with(DefaultMakeSpan::new().include_headers(true))
+                .make_span_with(DefaultMakeSpan::new())
                 .on_request(|request: &Request<Body>, _span: &Span| {
                     let method = logging::http_uri_to_method(request.uri().to_string());
                     info!("request {} {}", method.service, method.method);
@@ -212,8 +220,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                      _span: &Span| {
                         let extra_text = logging::get_trace_string(response.extensions());
                         info!(
-                            "response {} ms {}",
-                            latency.as_millis(),
+                            "response {} μs {}",
+                            latency.as_micros(),
                             extra_text.unwrap_or_default(),
                         );
                     },
