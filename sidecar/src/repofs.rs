@@ -200,15 +200,15 @@ impl RepoFS {
     // Determines the repo key based on the default remote of the
     // repository.
     pub fn repo_key(&self) -> Result<RepositoryKey, Status> {
-        let repo = match git_repository::open(Path::new(&self.repo_path)) {
+        let repo = match gix::open(Path::new(&self.repo_path)) {
             Ok(r) => r,
             Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
         };
         let default_remote: String = match repo
-            .find_default_remote(git_repository::remote::Direction::Fetch)
+            .find_default_remote(gix::remote::Direction::Fetch)
         {
             Some(Ok(branch)) => branch
-                .url(git_repository::remote::Direction::Fetch)
+                .url(gix::remote::Direction::Fetch)
                 .map(|url| {
                     url.path
                         .clone()
@@ -229,7 +229,7 @@ impl RepoFS {
 
     // Determines the git commit sha of HEAD.
     pub fn git_commit_sha(&self) -> Result<String, Status> {
-        let repo = match git_repository::open(Path::new(&self.repo_path)) {
+        let repo = match gix::open(Path::new(&self.repo_path)) {
             Ok(r) => r,
             Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
         };
