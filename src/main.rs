@@ -1,10 +1,10 @@
 use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
 use metrics::counter;
-use sidecar::gen::mod_cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
-use sidecar::gen::mod_cli::lekko::backend::v1beta1::RegisterClientRequest;
-use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
-use sidecar::gen::mod_sdk::lekko::client::v1beta1::configuration_service_server::ConfigurationServiceServer;
+use sidecar::gen::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
+use sidecar::gen::lekko::backend::v1beta1::RegisterClientRequest;
+use sidecar::gen::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
+use sidecar::gen::lekko::client::v1beta1::configuration_service_server::ConfigurationServiceServer;
 use sidecar::repofs::RepoFS;
 
 use hyper::{http::Request, Body};

@@ -11,4 +11,4 @@ plugins:
     strategy: all
     opt:
       - no_features
-      - include_file=mod_sdk.rs
+      - include_file=mod.rs
