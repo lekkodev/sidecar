@@ -2,8 +2,8 @@ use prost::{DecodeError, Message};
 use prost_types::Any;
 use tonic::metadata::{Ascii, MetadataValue};
 
-use crate::gen::mod_cli::lekko::backend::v1beta1::RepositoryKey;
-use crate::gen::mod_sdk::lekko::client::v1beta1::RepositoryKey as PublicRepositoryKey;
+use crate::gen::lekko::backend::v1beta1::RepositoryKey;
+use crate::gen::lekko::client::v1beta1::RepositoryKey as PublicRepositoryKey;
 
 // Key that the lekko api key is stored under in rpc headers.
 pub const APIKEY: &str = "apikey";

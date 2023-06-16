@@ -1,14 +1,14 @@
 // @generated
 /// Generated client implementations.
-pub mod configuration_service_client {
+pub mod distribution_service_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
     use tonic::codegen::*;
     use tonic::codegen::http::Uri;
     #[derive(Debug, Clone)]
-    pub struct ConfigurationServiceClient<T> {
+    pub struct DistributionServiceClient<T> {
         inner: tonic::client::Grpc<T>,
     }
-    impl ConfigurationServiceClient<tonic::transport::Channel> {
+    impl DistributionServiceClient<tonic::transport::Channel> {
         /// Attempt to create a new client by connecting to a given endpoint.
         pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
         where
@@ -19,7 +19,7 @@ pub mod configuration_service_client {
             Ok(Self::new(conn))
         }
     }
-    impl<T> ConfigurationServiceClient<T>
+    impl<T> DistributionServiceClient<T>
     where
         T: tonic::client::GrpcService<tonic::body::BoxBody>,
         T::Error: Into<StdError>,
@@ -37,7 +37,7 @@ pub mod configuration_service_client {
         pub fn with_interceptor<F>(
             inner: T,
             interceptor: F,
-        ) -> ConfigurationServiceClient<InterceptedService<T, F>>
+        ) -> DistributionServiceClient<InterceptedService<T, F>>
         where
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
@@ -51,7 +51,7 @@ pub mod configuration_service_client {
                 http::Request<tonic::body::BoxBody>,
             >>::Error: Into<StdError> + Send + Sync,
         {
-            ConfigurationServiceClient::new(InterceptedService::new(inner, interceptor))
+            DistributionServiceClient::new(InterceptedService::new(inner, interceptor))
         }
         /// Compress requests with the given encoding.
         ///
@@ -68,10 +68,13 @@ pub mod configuration_service_client {
             self.inner = self.inner.accept_compressed(encoding);
             self
         }
-        pub async fn get_bool_value(
+        pub async fn get_repository_version(
             &mut self,
-            request: impl tonic::IntoRequest<super::GetBoolValueRequest>,
-        ) -> Result<tonic::Response<super::GetBoolValueResponse>, tonic::Status> {
+            request: impl tonic::IntoRequest<super::GetRepositoryVersionRequest>,
+        ) -> Result<
+            tonic::Response<super::GetRepositoryVersionResponse>,
+            tonic::Status,
+        > {
             self.inner
                 .ready()
                 .await
@@ -83,14 +86,17 @@ pub mod configuration_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/lekko.client.v1beta1.ConfigurationService/GetBoolValue",
+                "/lekko.backend.v1beta1.DistributionService/GetRepositoryVersion",
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
-        pub async fn get_int_value(
+        pub async fn get_repository_contents(
             &mut self,
-            request: impl tonic::IntoRequest<super::GetIntValueRequest>,
-        ) -> Result<tonic::Response<super::GetIntValueResponse>, tonic::Status> {
+            request: impl tonic::IntoRequest<super::GetRepositoryContentsRequest>,
+        ) -> Result<
+            tonic::Response<super::GetRepositoryContentsResponse>,
+            tonic::Status,
+        > {
             self.inner
                 .ready()
                 .await
@@ -102,14 +108,17 @@ pub mod configuration_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/lekko.client.v1beta1.ConfigurationService/GetIntValue",
+                "/lekko.backend.v1beta1.DistributionService/GetRepositoryContents",
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
-        pub async fn get_float_value(
+        pub async fn send_flag_evaluation_metrics(
             &mut self,
-            request: impl tonic::IntoRequest<super::GetFloatValueRequest>,
-        ) -> Result<tonic::Response<super::GetFloatValueResponse>, tonic::Status> {
+            request: impl tonic::IntoRequest<super::SendFlagEvaluationMetricsRequest>,
+        ) -> Result<
+            tonic::Response<super::SendFlagEvaluationMetricsResponse>,
+            tonic::Status,
+        > {
             self.inner
                 .ready()
                 .await
@@ -121,14 +130,14 @@ pub mod configuration_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/lekko.client.v1beta1.ConfigurationService/GetFloatValue",
+                "/lekko.backend.v1beta1.DistributionService/SendFlagEvaluationMetrics",
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
-        pub async fn get_string_value(
+        pub async fn register_client(
             &mut self,
-            request: impl tonic::IntoRequest<super::GetStringValueRequest>,
-        ) -> Result<tonic::Response<super::GetStringValueResponse>, tonic::Status> {
+            request: impl tonic::IntoRequest<super::RegisterClientRequest>,
+        ) -> Result<tonic::Response<super::RegisterClientResponse>, tonic::Status> {
             self.inner
                 .ready()
                 .await
@@ -140,14 +149,14 @@ pub mod configuration_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/lekko.client.v1beta1.ConfigurationService/GetStringValue",
+                "/lekko.backend.v1beta1.DistributionService/RegisterClient",
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
-        pub async fn get_proto_value(
+        pub async fn deregister_client(
             &mut self,
-            request: impl tonic::IntoRequest<super::GetProtoValueRequest>,
-        ) -> Result<tonic::Response<super::GetProtoValueResponse>, tonic::Status> {
+            request: impl tonic::IntoRequest<super::DeregisterClientRequest>,
+        ) -> Result<tonic::Response<super::DeregisterClientResponse>, tonic::Status> {
             self.inner
                 .ready()
                 .await
@@ -159,14 +168,17 @@ pub mod configuration_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/lekko.client.v1beta1.ConfigurationService/GetProtoValue",
+                "/lekko.backend.v1beta1.DistributionService/DeregisterClient",
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
-        pub async fn get_json_value(
+        pub async fn get_developer_access_token(
             &mut self,
-            request: impl tonic::IntoRequest<super::GetJsonValueRequest>,
-        ) -> Result<tonic::Response<super::GetJsonValueResponse>, tonic::Status> {
+            request: impl tonic::IntoRequest<super::GetDeveloperAccessTokenRequest>,
+        ) -> Result<
+            tonic::Response<super::GetDeveloperAccessTokenResponse>,
+            tonic::Status,
+        > {
             self.inner
                 .ready()
                 .await
@@ -178,98 +190,61 @@ pub mod configuration_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/lekko.client.v1beta1.ConfigurationService/GetJSONValue",
-            );
-            self.inner.unary(request.into_request(), path, codec).await
-        }
-        pub async fn register(
-            &mut self,
-            request: impl tonic::IntoRequest<super::RegisterRequest>,
-        ) -> Result<tonic::Response<super::RegisterResponse>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/lekko.client.v1beta1.ConfigurationService/Register",
-            );
-            self.inner.unary(request.into_request(), path, codec).await
-        }
-        pub async fn deregister(
-            &mut self,
-            request: impl tonic::IntoRequest<super::DeregisterRequest>,
-        ) -> Result<tonic::Response<super::DeregisterResponse>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::new(
-                        tonic::Code::Unknown,
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/lekko.client.v1beta1.ConfigurationService/Deregister",
+                "/lekko.backend.v1beta1.DistributionService/GetDeveloperAccessToken",
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
     }
 }
 /// Generated server implementations.
-pub mod configuration_service_server {
+pub mod distribution_service_server {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
     use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with ConfigurationServiceServer.
+    ///Generated trait containing gRPC methods that should be implemented for use with DistributionServiceServer.
     #[async_trait]
-    pub trait ConfigurationService: Send + Sync + 'static {
-        async fn get_bool_value(
+    pub trait DistributionService: Send + Sync + 'static {
+        async fn get_repository_version(
             &self,
-            request: tonic::Request<super::GetBoolValueRequest>,
-        ) -> Result<tonic::Response<super::GetBoolValueResponse>, tonic::Status>;
-        async fn get_int_value(
+            request: tonic::Request<super::GetRepositoryVersionRequest>,
+        ) -> Result<tonic::Response<super::GetRepositoryVersionResponse>, tonic::Status>;
+        async fn get_repository_contents(
             &self,
-            request: tonic::Request<super::GetIntValueRequest>,
-        ) -> Result<tonic::Response<super::GetIntValueResponse>, tonic::Status>;
-        async fn get_float_value(
+            request: tonic::Request<super::GetRepositoryContentsRequest>,
+        ) -> Result<
+            tonic::Response<super::GetRepositoryContentsResponse>,
+            tonic::Status,
+        >;
+        async fn send_flag_evaluation_metrics(
             &self,
-            request: tonic::Request<super::GetFloatValueRequest>,
-        ) -> Result<tonic::Response<super::GetFloatValueResponse>, tonic::Status>;
-        async fn get_string_value(
+            request: tonic::Request<super::SendFlagEvaluationMetricsRequest>,
+        ) -> Result<
+            tonic::Response<super::SendFlagEvaluationMetricsResponse>,
+            tonic::Status,
+        >;
+        async fn register_client(
             &self,
-            request: tonic::Request<super::GetStringValueRequest>,
-        ) -> Result<tonic::Response<super::GetStringValueResponse>, tonic::Status>;
-        async fn get_proto_value(
+            request: tonic::Request<super::RegisterClientRequest>,
+        ) -> Result<tonic::Response<super::RegisterClientResponse>, tonic::Status>;
+        async fn deregister_client(
             &self,
-            request: tonic::Request<super::GetProtoValueRequest>,
-        ) -> Result<tonic::Response<super::GetProtoValueResponse>, tonic::Status>;
-        async fn get_json_value(
+            request: tonic::Request<super::DeregisterClientRequest>,
+        ) -> Result<tonic::Response<super::DeregisterClientResponse>, tonic::Status>;
+        async fn get_developer_access_token(
             &self,
-            request: tonic::Request<super::GetJsonValueRequest>,
-        ) -> Result<tonic::Response<super::GetJsonValueResponse>, tonic::Status>;
-        async fn register(
-            &self,
-            request: tonic::Request<super::RegisterRequest>,
-        ) -> Result<tonic::Response<super::RegisterResponse>, tonic::Status>;
-        async fn deregister(
-            &self,
-            request: tonic::Request<super::DeregisterRequest>,
-        ) -> Result<tonic::Response<super::DeregisterResponse>, tonic::Status>;
+            request: tonic::Request<super::GetDeveloperAccessTokenRequest>,
+        ) -> Result<
+            tonic::Response<super::GetDeveloperAccessTokenResponse>,
+            tonic::Status,
+        >;
     }
     #[derive(Debug)]
-    pub struct ConfigurationServiceServer<T: ConfigurationService> {
+    pub struct DistributionServiceServer<T: DistributionService> {
         inner: _Inner<T>,
         accept_compression_encodings: EnabledCompressionEncodings,
         send_compression_encodings: EnabledCompressionEncodings,
     }
     struct _Inner<T>(Arc<T>);
-    impl<T: ConfigurationService> ConfigurationServiceServer<T> {
+    impl<T: DistributionService> DistributionServiceServer<T> {
         pub fn new(inner: T) -> Self {
             Self::from_arc(Arc::new(inner))
         }
@@ -303,10 +278,9 @@ pub mod configuration_service_server {
             self
         }
     }
-    impl<T, B> tonic::codegen::Service<http::Request<B>>
-    for ConfigurationServiceServer<T>
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for DistributionServiceServer<T>
     where
-        T: ConfigurationService,
+        T: DistributionService,
         B: Body + Send + 'static,
         B::Error: Into<StdError> + Send + 'static,
     {
@@ -322,25 +296,25 @@ pub mod configuration_service_server {
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
             let inner = self.inner.clone();
             match req.uri().path() {
-                "/lekko.client.v1beta1.ConfigurationService/GetBoolValue" => {
+                "/lekko.backend.v1beta1.DistributionService/GetRepositoryVersion" => {
                     #[allow(non_camel_case_types)]
-                    struct GetBoolValueSvc<T: ConfigurationService>(pub Arc<T>);
+                    struct GetRepositoryVersionSvc<T: DistributionService>(pub Arc<T>);
                     impl<
-                        T: ConfigurationService,
-                    > tonic::server::UnaryService<super::GetBoolValueRequest>
-                    for GetBoolValueSvc<T> {
-                        type Response = super::GetBoolValueResponse;
+                        T: DistributionService,
+                    > tonic::server::UnaryService<super::GetRepositoryVersionRequest>
+                    for GetRepositoryVersionSvc<T> {
+                        type Response = super::GetRepositoryVersionResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::GetBoolValueRequest>,
+                            request: tonic::Request<super::GetRepositoryVersionRequest>,
                         ) -> Self::Future {
                             let inner = self.0.clone();
                             let fut = async move {
-                                (*inner).get_bool_value(request).await
+                                (*inner).get_repository_version(request).await
                             };
                             Box::pin(fut)
                         }
@@ -350,7 +324,7 @@ pub mod configuration_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
-                        let method = GetBoolValueSvc(inner);
+                        let method = GetRepositoryVersionSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -362,25 +336,25 @@ pub mod configuration_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/lekko.client.v1beta1.ConfigurationService/GetIntValue" => {
+                "/lekko.backend.v1beta1.DistributionService/GetRepositoryContents" => {
                     #[allow(non_camel_case_types)]
-                    struct GetIntValueSvc<T: ConfigurationService>(pub Arc<T>);
+                    struct GetRepositoryContentsSvc<T: DistributionService>(pub Arc<T>);
                     impl<
-                        T: ConfigurationService,
-                    > tonic::server::UnaryService<super::GetIntValueRequest>
-                    for GetIntValueSvc<T> {
-                        type Response = super::GetIntValueResponse;
+                        T: DistributionService,
+                    > tonic::server::UnaryService<super::GetRepositoryContentsRequest>
+                    for GetRepositoryContentsSvc<T> {
+                        type Response = super::GetRepositoryContentsResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::GetIntValueRequest>,
+                            request: tonic::Request<super::GetRepositoryContentsRequest>,
                         ) -> Self::Future {
                             let inner = self.0.clone();
                             let fut = async move {
-                                (*inner).get_int_value(request).await
+                                (*inner).get_repository_contents(request).await
                             };
                             Box::pin(fut)
                         }
@@ -390,7 +364,7 @@ pub mod configuration_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
-                        let method = GetIntValueSvc(inner);
+                        let method = GetRepositoryContentsSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -402,25 +376,30 @@ pub mod configuration_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/lekko.client.v1beta1.ConfigurationService/GetFloatValue" => {
+                "/lekko.backend.v1beta1.DistributionService/SendFlagEvaluationMetrics" => {
                     #[allow(non_camel_case_types)]
-                    struct GetFloatValueSvc<T: ConfigurationService>(pub Arc<T>);
+                    struct SendFlagEvaluationMetricsSvc<T: DistributionService>(
+                        pub Arc<T>,
+                    );
                     impl<
-                        T: ConfigurationService,
-                    > tonic::server::UnaryService<super::GetFloatValueRequest>
-                    for GetFloatValueSvc<T> {
-                        type Response = super::GetFloatValueResponse;
+                        T: DistributionService,
+                    > tonic::server::UnaryService<
+                        super::SendFlagEvaluationMetricsRequest,
+                    > for SendFlagEvaluationMetricsSvc<T> {
+                        type Response = super::SendFlagEvaluationMetricsResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::GetFloatValueRequest>,
+                            request: tonic::Request<
+                                super::SendFlagEvaluationMetricsRequest,
+                            >,
                         ) -> Self::Future {
                             let inner = self.0.clone();
                             let fut = async move {
-                                (*inner).get_float_value(request).await
+                                (*inner).send_flag_evaluation_metrics(request).await
                             };
                             Box::pin(fut)
                         }
@@ -430,7 +409,7 @@ pub mod configuration_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
-                        let method = GetFloatValueSvc(inner);
+                        let method = SendFlagEvaluationMetricsSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -442,25 +421,25 @@ pub mod configuration_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/lekko.client.v1beta1.ConfigurationService/GetStringValue" => {
+                "/lekko.backend.v1beta1.DistributionService/RegisterClient" => {
                     #[allow(non_camel_case_types)]
-                    struct GetStringValueSvc<T: ConfigurationService>(pub Arc<T>);
+                    struct RegisterClientSvc<T: DistributionService>(pub Arc<T>);
                     impl<
-                        T: ConfigurationService,
-                    > tonic::server::UnaryService<super::GetStringValueRequest>
-                    for GetStringValueSvc<T> {
-                        type Response = super::GetStringValueResponse;
+                        T: DistributionService,
+                    > tonic::server::UnaryService<super::RegisterClientRequest>
+                    for RegisterClientSvc<T> {
+                        type Response = super::RegisterClientResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::GetStringValueRequest>,
+                            request: tonic::Request<super::RegisterClientRequest>,
                         ) -> Self::Future {
                             let inner = self.0.clone();
                             let fut = async move {
-                                (*inner).get_string_value(request).await
+                                (*inner).register_client(request).await
                             };
                             Box::pin(fut)
                         }
@@ -470,7 +449,7 @@ pub mod configuration_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
-                        let method = GetStringValueSvc(inner);
+                        let method = RegisterClientSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -482,25 +461,25 @@ pub mod configuration_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/lekko.client.v1beta1.ConfigurationService/GetProtoValue" => {
+                "/lekko.backend.v1beta1.DistributionService/DeregisterClient" => {
                     #[allow(non_camel_case_types)]
-                    struct GetProtoValueSvc<T: ConfigurationService>(pub Arc<T>);
+                    struct DeregisterClientSvc<T: DistributionService>(pub Arc<T>);
                     impl<
-                        T: ConfigurationService,
-                    > tonic::server::UnaryService<super::GetProtoValueRequest>
-                    for GetProtoValueSvc<T> {
-                        type Response = super::GetProtoValueResponse;
+                        T: DistributionService,
+                    > tonic::server::UnaryService<super::DeregisterClientRequest>
+                    for DeregisterClientSvc<T> {
+                        type Response = super::DeregisterClientResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::GetProtoValueRequest>,
+                            request: tonic::Request<super::DeregisterClientRequest>,
                         ) -> Self::Future {
                             let inner = self.0.clone();
                             let fut = async move {
-                                (*inner).get_proto_value(request).await
+                                (*inner).deregister_client(request).await
                             };
                             Box::pin(fut)
                         }
@@ -510,7 +489,7 @@ pub mod configuration_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
-                        let method = GetProtoValueSvc(inner);
+                        let method = DeregisterClientSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -522,25 +501,29 @@ pub mod configuration_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/lekko.client.v1beta1.ConfigurationService/GetJSONValue" => {
+                "/lekko.backend.v1beta1.DistributionService/GetDeveloperAccessToken" => {
                     #[allow(non_camel_case_types)]
-                    struct GetJSONValueSvc<T: ConfigurationService>(pub Arc<T>);
+                    struct GetDeveloperAccessTokenSvc<T: DistributionService>(
+                        pub Arc<T>,
+                    );
                     impl<
-                        T: ConfigurationService,
-                    > tonic::server::UnaryService<super::GetJsonValueRequest>
-                    for GetJSONValueSvc<T> {
-                        type Response = super::GetJsonValueResponse;
+                        T: DistributionService,
+                    > tonic::server::UnaryService<super::GetDeveloperAccessTokenRequest>
+                    for GetDeveloperAccessTokenSvc<T> {
+                        type Response = super::GetDeveloperAccessTokenResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::GetJsonValueRequest>,
+                            request: tonic::Request<
+                                super::GetDeveloperAccessTokenRequest,
+                            >,
                         ) -> Self::Future {
                             let inner = self.0.clone();
                             let fut = async move {
-                                (*inner).get_json_value(request).await
+                                (*inner).get_developer_access_token(request).await
                             };
                             Box::pin(fut)
                         }
@@ -550,83 +533,7 @@ pub mod configuration_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
-                        let method = GetJSONValueSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/lekko.client.v1beta1.ConfigurationService/Register" => {
-                    #[allow(non_camel_case_types)]
-                    struct RegisterSvc<T: ConfigurationService>(pub Arc<T>);
-                    impl<
-                        T: ConfigurationService,
-                    > tonic::server::UnaryService<super::RegisterRequest>
-                    for RegisterSvc<T> {
-                        type Response = super::RegisterResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::RegisterRequest>,
-                        ) -> Self::Future {
-                            let inner = self.0.clone();
-                            let fut = async move { (*inner).register(request).await };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let inner = inner.0;
-                        let method = RegisterSvc(inner);
-                        let codec = tonic::codec::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/lekko.client.v1beta1.ConfigurationService/Deregister" => {
-                    #[allow(non_camel_case_types)]
-                    struct DeregisterSvc<T: ConfigurationService>(pub Arc<T>);
-                    impl<
-                        T: ConfigurationService,
-                    > tonic::server::UnaryService<super::DeregisterRequest>
-                    for DeregisterSvc<T> {
-                        type Response = super::DeregisterResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::DeregisterRequest>,
-                        ) -> Self::Future {
-                            let inner = self.0.clone();
-                            let fut = async move { (*inner).deregister(request).await };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let inner = inner.0;
-                        let method = DeregisterSvc(inner);
+                        let method = GetDeveloperAccessTokenSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -653,7 +560,7 @@ pub mod configuration_service_server {
             }
         }
     }
-    impl<T: ConfigurationService> Clone for ConfigurationServiceServer<T> {
+    impl<T: DistributionService> Clone for DistributionServiceServer<T> {
         fn clone(&self) -> Self {
             let inner = self.inner.clone();
             Self {
@@ -663,7 +570,7 @@ pub mod configuration_service_server {
             }
         }
     }
-    impl<T: ConfigurationService> Clone for _Inner<T> {
+    impl<T: DistributionService> Clone for _Inner<T> {
         fn clone(&self) -> Self {
             Self(self.0.clone())
         }
@@ -673,8 +580,8 @@ pub mod configuration_service_server {
             write!(f, "{:?}", self.0)
         }
     }
-    impl<T: ConfigurationService> tonic::server::NamedService
-    for ConfigurationServiceServer<T> {
-        const NAME: &'static str = "lekko.client.v1beta1.ConfigurationService";
+    impl<T: DistributionService> tonic::server::NamedService
+    for DistributionServiceServer<T> {
+        const NAME: &'static str = "lekko.backend.v1beta1.DistributionService";
     }
 }

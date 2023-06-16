@@ -7,8 +7,7 @@ use tonic::{body::BoxBody, metadata::MetadataMap, Request, Response, Status};
 
 use crate::{
     evaluate::evaluator::evaluate,
-    gen::mod_cli::lekko::{backend::v1beta1::RepositoryKey, feature::v1beta1::FeatureType},
-    gen::mod_sdk::lekko::client::v1beta1::{
+    gen::lekko::client::v1beta1::{
         configuration_service_client::ConfigurationServiceClient,
         configuration_service_server::ConfigurationService, DeregisterRequest, DeregisterResponse,
         GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest, GetFloatValueResponse,
@@ -16,6 +15,7 @@ use crate::{
         GetProtoValueRequest, GetProtoValueResponse, GetStringValueRequest, GetStringValueResponse,
         RegisterRequest, RegisterResponse, Value,
     },
+    gen::lekko::{backend::v1beta1::RepositoryKey, feature::v1beta1::FeatureType},
     logging::InsertLogFields,
     metrics::Metrics,
     store::Store,

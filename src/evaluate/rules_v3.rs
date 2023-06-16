@@ -7,14 +7,12 @@ use prost_types::{
 use tonic::Status;
 
 use crate::gen::{
-    mod_cli::lekko::rules::v1beta3::{
+    lekko::client::{self, v1beta1::value::Kind as LekkoKind, v1beta1::Value as LekkoValue},
+    lekko::rules::v1beta3::{
         rule::Rule::{Atom, BoolConst, LogicalExpression, Not},
         ComparisonOperator as CmpOp,
         LogicalOperator::{self, And, Or},
         Rule,
-    },
-    mod_sdk::lekko::client::{
-        self, v1beta1::value::Kind as LekkoKind, v1beta1::Value as LekkoValue,
     },
 };
 
@@ -87,6 +85,7 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
                 CmpOp::Unspecified => Err(Status::internal("unknown comparison operator")),
             }
         }
+        crate::gen::lekko::rules::v1beta3::rule::Rule::CallExpression(_) => todo!(),
     }
 }
 

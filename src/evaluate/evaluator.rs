@@ -4,11 +4,11 @@ use prost_types::Any;
 use tonic::Status;
 
 use crate::{
-    gen::mod_cli::lekko::feature::v1beta1::{Constraint, Feature},
-    gen::mod_sdk::lekko::client::v1beta1::Value,
+    gen::lekko::client::v1beta1::Value,
+    gen::lekko::feature::v1beta1::{Constraint, Feature},
 };
 
-use super::{rules::check_rule, rules_v3::check_rule as check_rule_v3};
+use super::rules_v3::check_rule as check_rule_v3;
 
 // Performs evaluation of the feature tree using the given context.
 pub fn evaluate(
@@ -55,13 +55,7 @@ fn traverse(
 ) -> Result<Option<PassedEvaluation>, Status> {
     let passes = match &constraint.rule_ast_new {
         Some(ast) => check_rule_v3(ast, context)?,
-        None => check_rule(
-            constraint
-                .rule_ast
-                .as_ref()
-                .ok_or_else(|| Status::internal("empty rule ast"))?,
-            context,
-        )?,
+        None => return Err(Status::internal("empty rule v3")),
     };
     if !passes {
         // if the rule fails, we avoid further traversal
