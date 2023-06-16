@@ -45,7 +45,7 @@ lint:
 .PHONY: generate
 generate:
 	rm -r src/gen/proto
-	buf generate buf.build/lekkodev/cli --template templates/buf.gen.cli.yaml --include-imports
+	buf generate buf.build/lekkodev/cli --template buf.gen.yaml --include-imports
 	# rust doc test tries to execute code blocks which fail cargo test in this file.
 	# so we replace doc strings with regular comments.
 	# See https://github.com/rust-lang/cargo/issues/9146
