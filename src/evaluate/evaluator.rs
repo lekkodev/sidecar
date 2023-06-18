@@ -10,17 +10,27 @@ use crate::{
 
 use super::rules_v3::check_rule as check_rule_v3;
 
+// Meta-level context for evaluation, separate from the context given
+// by users as part of the evaluation request.
+// Information required to evaluate rules but not part of the feature's
+// context.
+pub struct EvalContext {
+    pub repo_name: String,
+    pub namespace: String,
+}
+
 // Performs evaluation of the feature tree using the given context.
 pub fn evaluate(
     feature: &Feature,
     context: &HashMap<String, Value>,
+    eval_context: &EvalContext,
 ) -> Result<(Any, Vec<usize>), Status> {
     let tree = feature
         .tree
         .as_ref()
         .ok_or_else(|| Status::internal("empty tree"))?;
     for (i, constraint) in tree.constraints.iter().enumerate() {
-        if let Some((child_val, child_path)) = traverse(constraint, context)? {
+        if let Some((child_val, child_path)) = traverse(constraint, context, eval_context)? {
             if let Some(some_child_val) = child_val {
                 return Ok((
                     some_child_val,
@@ -52,9 +62,10 @@ type PassedEvaluation = (Option<Any>, Vec<usize>);
 fn traverse(
     constraint: &Constraint,
     context: &HashMap<String, Value>,
+    eval_context: &EvalContext,
 ) -> Result<Option<PassedEvaluation>, Status> {
     let passes = match &constraint.rule_ast_new {
-        Some(ast) => check_rule_v3(ast, context)?,
+        Some(ast) => check_rule_v3(ast, context, eval_context)?,
         None => return Err(Status::internal("empty rule v3")),
     };
     if !passes {
@@ -63,7 +74,7 @@ fn traverse(
     }
     // rule passed
     for (i, child) in constraint.constraints.iter().enumerate() {
-        if let Some((child_val, child_path)) = traverse(child, context)? {
+        if let Some((child_val, child_path)) = traverse(child, context, eval_context)? {
             if let Some(some_child_val) = child_val {
                 return Ok(Some((
                     Some(some_child_val),
