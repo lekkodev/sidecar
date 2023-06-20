@@ -20,6 +20,7 @@ pub fn bucket(
 ) -> Result<bool, Status> {
     let ctx_key = &bucket_f.context_key;
     let present = context.contains_key(ctx_key);
+    // If key is missing in context map, evaluate to false - move to next rule
     if !present {
         return Ok(false);
     }
@@ -40,6 +41,7 @@ pub fn bucket(
     };
 
     let salted_bytes = [
+        eval_context.owner_name.as_bytes(),
         eval_context.repo_name.as_bytes(),
         eval_context.namespace.as_bytes(),
         ctx_key.as_bytes(),
@@ -65,10 +67,12 @@ mod tests {
             Self {
                 eval_contexts: vec![
                     EvalContext {
+                        owner_name: String::from("owner_1"),
                         repo_name: String::from("repo_1"),
                         namespace: String::from("ns_1"),
                     },
                     EvalContext {
+                        owner_name: String::from("owner_2"),
                         repo_name: String::from("repo_2"),
                         namespace: String::from("ns_2"),
                     },
@@ -100,29 +104,30 @@ mod tests {
     fn test_bucket_ints() {
         let setup = Setup::new();
 
+        // Different expected results with same value across different eval contexts
         let test_cases = vec![
             vec![
                 (1, true),
                 (2, false),
-                (3, true),
-                (4, false),
-                (5, false),
+                (3, false),
+                (4, true),
+                (5, true),
                 (101, false),
                 (102, false),
                 (103, true),
                 (104, false),
-                (105, false),
+                (105, true),
             ],
             vec![
-                (1, true),
-                (2, true),
-                (3, false),
-                (4, false),
-                (5, false),
-                (101, true),
-                (102, true),
-                (103, false),
-                (104, false),
+                (1, false),
+                (2, false),
+                (3, true),
+                (4, true),
+                (5, true),
+                (101, false),
+                (102, false),
+                (103, true),
+                (104, true),
                 (105, false),
             ],
         ];
@@ -159,24 +164,25 @@ mod tests {
     fn test_bucket_doubles() {
         let setup = Setup::new();
 
+        // Different expected results with same value across different eval contexts
         let test_cases = vec![
             vec![
                 (3.1415, false),
-                (2.7182, false),
-                (1.6180, true),
-                (6.6261, true),
-                (6.0221, false),
-                (2.9979, false),
-                (6.6730, false),
-                (1.3807, false),
-                (1.4142, false),
-                (2.0000, false),
-            ],
-            vec![
-                (3.1415, true),
                 (2.7182, true),
                 (1.6180, true),
                 (6.6261, false),
+                (6.0221, false),
+                (2.9979, true),
+                (6.6730, false),
+                (1.3807, true),
+                (1.4142, true),
+                (2.0000, true),
+            ],
+            vec![
+                (3.1415, false),
+                (2.7182, false),
+                (1.6180, false),
+                (6.6261, true),
                 (6.0221, false),
                 (2.9979, true),
                 (6.6730, false),
@@ -218,29 +224,30 @@ mod tests {
     fn test_bucket_strings() {
         let setup = Setup::new();
 
+        // Different expected results with same value across different eval contexts
         let test_cases = vec![
             vec![
-                (String::from("hello"), true),
-                (String::from("world"), true),
+                (String::from("hello"), false),
+                (String::from("world"), false),
                 (String::from("i"), true),
                 (String::from("am"), false),
-                (String::from("a"), true),
+                (String::from("a"), false),
                 (String::from("unit"), true),
-                (String::from("test"), true),
+                (String::from("test"), false),
                 (String::from("case"), true),
                 (String::from("for"), true),
                 (String::from("bucket"), true),
             ],
             vec![
-                (String::from("hello"), true),
+                (String::from("hello"), false),
                 (String::from("world"), false),
                 (String::from("i"), true),
                 (String::from("am"), true),
-                (String::from("a"), true),
+                (String::from("a"), false),
                 (String::from("unit"), true),
                 (String::from("test"), true),
-                (String::from("case"), true),
-                (String::from("for"), false),
+                (String::from("case"), false),
+                (String::from("for"), true),
                 (String::from("bucket"), false),
             ],
         ];
