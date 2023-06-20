@@ -6,7 +6,7 @@ use prost_types::{value::Kind, Any};
 use tonic::{body::BoxBody, metadata::MetadataMap, Request, Response, Status};
 
 use crate::{
-    evaluate::evaluator::evaluate,
+    evaluate::evaluator::{evaluate, EvalContext},
     gen::lekko::client::v1beta1::{
         configuration_service_client::ConfigurationServiceClient,
         configuration_service_server::ConfigurationService, DeregisterRequest, DeregisterResponse,
@@ -56,7 +56,12 @@ impl Service {
                 requested_type.as_str_name()
             )));
         }
-        let eval_result = evaluate(&feature_data.feature, context)?;
+        let eval_context = EvalContext {
+            owner_name: feature.rk.owner_name.to_owned(),
+            repo_name: feature.rk.repo_name.to_owned(),
+            namespace: feature.namespace.to_owned(),
+        };
+        let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         if let Some(m) = self.metrics.as_ref() {
             m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
         }
