@@ -18,6 +18,7 @@ use crate::gen::{
 };
 
 use super::evaluator::EvalContext;
+use super::functions::bucket;
 
 // TODO: make all error messages contain dynamic variable info.
 // check_rule evaluates the rule using the given context to determine whether or not the rule passed.
@@ -99,7 +100,7 @@ pub fn check_rule(
                 .as_ref()
                 .ok_or_else(|| Status::internal("empty function"))?;
             match function {
-                Function::Bucket(_) => todo!(),
+                Function::Bucket(bucket_f) => bucket(bucket_f, context, eval_context),
             }
         }
     }
