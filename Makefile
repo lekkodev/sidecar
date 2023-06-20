@@ -50,6 +50,7 @@ generate:
 	# so we replace doc strings with regular comments.
 	# See https://github.com/rust-lang/cargo/issues/9146
 	sed -i.bak s,///,//,g src/gen/proto/google.rpc.rs
+	rm src/gen/proto/google.rpc.rs.bak
 
 .PHONY: all
 all: build test format lint

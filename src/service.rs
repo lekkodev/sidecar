@@ -9,11 +9,11 @@ use crate::{
     evaluate::evaluator::{evaluate, EvalContext},
     gen::lekko::client::v1beta1::{
         configuration_service_client::ConfigurationServiceClient,
-        configuration_service_server::ConfigurationService, DeregisterRequest, DeregisterResponse,
-        GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest, GetFloatValueResponse,
-        GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest, GetJsonValueResponse,
-        GetProtoValueRequest, GetProtoValueResponse, GetStringValueRequest, GetStringValueResponse,
-        RegisterRequest, RegisterResponse, Value,
+        configuration_service_server::ConfigurationService, Any as LekkoAny, DeregisterRequest,
+        DeregisterResponse, GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest,
+        GetFloatValueResponse, GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest,
+        GetJsonValueResponse, GetProtoValueRequest, GetProtoValueResponse, GetStringValueRequest,
+        GetStringValueResponse, RegisterRequest, RegisterResponse, Value,
     },
     gen::lekko::{backend::v1beta1::RepositoryKey, feature::v1beta1::FeatureType},
     logging::InsertLogFields,
@@ -212,7 +212,15 @@ impl ConfigurationService for Service {
         };
 
         let any = self.get_value_local(params, &inner.context, FeatureType::Proto)?;
-        Ok(inner.insert_log_fields(Response::new(GetProtoValueResponse { value: Some(any) })))
+        Ok(
+            inner.insert_log_fields(Response::new(GetProtoValueResponse {
+                value: Some(any.clone()),
+                value_v2: Some(LekkoAny {
+                    type_url: any.clone().type_url,
+                    value: any.value,
+                }),
+            })),
+        )
     }
 
     async fn get_json_value(
