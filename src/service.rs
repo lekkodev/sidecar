@@ -57,8 +57,9 @@ impl Service {
             )));
         }
         let eval_context = EvalContext {
-            repo_name: feature.rk.repo_name.clone(),
-            namespace: feature.namespace.clone(),
+            owner_name: feature.rk.owner_name.to_owned(),
+            repo_name: feature.rk.repo_name.to_owned(),
+            namespace: feature.namespace.to_owned(),
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         if let Some(m) = self.metrics.as_ref() {
