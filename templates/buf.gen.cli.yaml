@@ -1,13 +1,13 @@
 version: v1
 plugins:
   - name: prost
-    out: src/gen/proto
+    out: src/gen/proto/cli
     opt:
       - file_descriptor_set
   - name: tonic
-    out: src/gen/proto
+    out: src/gen/proto/cli
   - name: prost-crate
-    out: src/gen/proto
+    out: src/gen/proto/cli
     strategy: all
     opt:
       - no_features

@@ -17,11 +17,11 @@ use tonic::{
 };
 
 use crate::{
-    gen::lekko::backend::v1beta1::{
+    gen::cli::lekko::backend::v1beta1::{
         distribution_service_client::DistributionServiceClient, ContextKey, FlagEvaluationEvent,
         SendFlagEvaluationMetricsRequest,
     },
-    gen::lekko::client::v1beta1::{
+    gen::sdk::lekko::client::v1beta1::{
         value::Kind::{BoolValue, DoubleValue, IntValue, StringValue},
         Value,
     },

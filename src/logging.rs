@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::gen::lekko::client::v1beta1::{
+use crate::gen::sdk::lekko::client::v1beta1::{
     GetBoolValueRequest, GetFloatValueRequest, GetIntValueRequest, GetJsonValueRequest,
     GetProtoValueRequest, GetStringValueRequest, RepositoryKey, Value,
 };
