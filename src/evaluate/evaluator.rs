@@ -4,8 +4,8 @@ use prost_types::Any;
 use tonic::Status;
 
 use crate::{
-    gen::lekko::client::v1beta1::Value,
-    gen::lekko::feature::v1beta1::{Constraint, Feature},
+    gen::cli::lekko::feature::v1beta1::{Constraint, Feature},
+    gen::sdk::lekko::client::v1beta1::Value,
 };
 
 use super::rules_v3::check_rule as check_rule_v3;

@@ -6,15 +6,16 @@ use prost_types::{
 };
 use tonic::Status;
 
-use crate::gen::{
-    lekko::client::{self, v1beta1::value::Kind as LekkoKind, v1beta1::Value as LekkoValue},
-    lekko::rules::v1beta3::{
-        call_expression::Function,
-        rule::Rule::{Atom, BoolConst, CallExpression, LogicalExpression, Not},
-        ComparisonOperator as CmpOp,
-        LogicalOperator::{self, And, Or},
-        Rule,
-    },
+use crate::gen::sdk::lekko::client::{
+    self, v1beta1::value::Kind as LekkoKind, v1beta1::Value as LekkoValue,
+};
+
+use crate::gen::cli::lekko::rules::v1beta3::{
+    call_expression::Function,
+    rule::Rule::{Atom, BoolConst, CallExpression, LogicalExpression, Not},
+    ComparisonOperator as CmpOp,
+    LogicalOperator::{self, And, Or},
+    Rule,
 };
 
 use super::evaluator::EvalContext;

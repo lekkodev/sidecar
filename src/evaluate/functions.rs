@@ -4,10 +4,8 @@ use tonic::Status;
 use xxhash_rust::xxh32::xxh32;
 
 use super::evaluator::EvalContext;
-use crate::gen::lekko::{
-    client::v1beta1::value::Kind as LekkoKind, client::v1beta1::Value as LekkoValue,
-    rules::v1beta3::call_expression::Bucket,
-};
+use crate::gen::cli::lekko::rules::v1beta3::call_expression::Bucket;
+use crate::gen::sdk::lekko::client::v1beta1::{value::Kind as LekkoKind, Value as LekkoValue};
 
 // If the hashed feature value % 100 <= threshold, it fits in the "bucket".
 // In reality, we internally store the threshold as an integer in [0,100000]
