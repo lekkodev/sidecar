@@ -12,7 +12,7 @@ use crate::gen::lekko::{
 // If the hashed feature value % 100 <= threshold, it fits in the "bucket".
 // In reality, we internally store the threshold as an integer in [0,100000]
 // to account for up to 3 decimal places.
-// The feature value is salted using the repo name, namespace, and feature name.
+// The feature value is salted using the namespace, feature name, and context key.
 pub fn bucket(
     bucket_f: &Bucket,
     context: &HashMap<String, LekkoValue>,
@@ -41,9 +41,8 @@ pub fn bucket(
     };
 
     let salted_bytes = [
-        eval_context.owner_name.as_bytes(),
-        eval_context.repo_name.as_bytes(),
         eval_context.namespace.as_bytes(),
+        eval_context.feature_name.as_bytes(),
         ctx_key.as_bytes(),
         value_bytes.as_slice(),
     ]
@@ -67,18 +66,37 @@ mod tests {
             Self {
                 eval_contexts: vec![
                     EvalContext {
-                        owner_name: String::from("owner_1"),
-                        repo_name: String::from("repo_1"),
                         namespace: String::from("ns_1"),
+                        feature_name: String::from("feature_1"),
                     },
                     EvalContext {
-                        owner_name: String::from("owner_2"),
-                        repo_name: String::from("repo_2"),
                         namespace: String::from("ns_2"),
+                        feature_name: String::from("feature_2"),
                     },
                 ],
             }
         }
+    }
+
+    // NOTE: to test consistency of the hashing/bucketing algorithms cross-platform
+    // test cases (data and expected evaluation results) should be identical
+    fn assert_bucket<T: std::fmt::Display>(
+        expected: &bool,
+        actual: &bool,
+        context_value: &T,
+        eval_context: &EvalContext,
+    ) {
+        assert_eq!(
+            expected,
+            actual,
+            "key: {}/{}/{}:{}, expected: {}, actual: {}",
+            eval_context.namespace,
+            eval_context.feature_name,
+            "key",
+            context_value,
+            expected,
+            actual
+        );
     }
 
     #[test]
@@ -107,34 +125,34 @@ mod tests {
         // Different expected results with same value across different eval contexts
         let test_cases = vec![
             vec![
-                (1, true),
+                (1, false),
                 (2, false),
-                (3, false),
-                (4, true),
+                (3, true),
+                (4, false),
                 (5, true),
-                (101, false),
-                (102, false),
-                (103, true),
+                (101, true),
+                (102, true),
+                (103, false),
                 (104, false),
                 (105, true),
             ],
             vec![
                 (1, false),
-                (2, false),
-                (3, true),
-                (4, true),
+                (2, true),
+                (3, false),
+                (4, false),
                 (5, true),
-                (101, false),
-                (102, false),
-                (103, true),
+                (101, true),
+                (102, true),
+                (103, false),
                 (104, true),
-                (105, false),
+                (105, true),
             ],
         ];
 
         for (eval_i, eval_context) in setup.eval_contexts.iter().enumerate() {
             for test_case in test_cases[eval_i].iter() {
-                let (key, expected) = test_case;
+                let (context_value, expected) = test_case;
 
                 // 50% bucketing
                 let bucket_f = Bucket {
@@ -144,16 +162,12 @@ mod tests {
                 let context = HashMap::from([(
                     String::from("key"),
                     LekkoValue {
-                        kind: Some(LekkoKind::IntValue(*key)),
+                        kind: Some(LekkoKind::IntValue(*context_value)),
                     },
                 )]);
 
                 match bucket(&bucket_f, &context, eval_context) {
-                    Ok(res) => assert_eq!(
-                        expected, &res,
-                        "key: {}, expected: {}, actual: {}",
-                        key, expected, res
-                    ),
+                    Ok(res) => assert_bucket(expected, &res, context_value, eval_context),
                     _ => println!("unexpected error"),
                 }
             }
@@ -168,33 +182,33 @@ mod tests {
         let test_cases = vec![
             vec![
                 (3.1415, false),
-                (2.7182, true),
-                (1.6180, true),
-                (6.6261, false),
-                (6.0221, false),
-                (2.9979, true),
-                (6.6730, false),
-                (1.3807, true),
-                (1.4142, true),
-                (2.0000, true),
-            ],
-            vec![
-                (3.1415, false),
                 (2.7182, false),
-                (1.6180, false),
+                (1.6180, true),
                 (6.6261, true),
                 (6.0221, false),
                 (2.9979, true),
                 (6.6730, false),
                 (1.3807, true),
-                (1.4142, false),
+                (1.4142, true),
+                (2.0000, false),
+            ],
+            vec![
+                (3.1415, true),
+                (2.7182, false),
+                (1.6180, true),
+                (6.6261, false),
+                (6.0221, false),
+                (2.9979, false),
+                (6.6730, false),
+                (1.3807, false),
+                (1.4142, true),
                 (2.0000, false),
             ],
         ];
 
         for (eval_i, eval_context) in setup.eval_contexts.iter().enumerate() {
             for test_case in test_cases[eval_i].iter() {
-                let (key, expected) = test_case;
+                let (context_value, expected) = test_case;
 
                 // 50% bucketing
                 let bucket_f = Bucket {
@@ -204,16 +218,12 @@ mod tests {
                 let context = HashMap::from([(
                     String::from("key"),
                     LekkoValue {
-                        kind: Some(LekkoKind::DoubleValue(*key)),
+                        kind: Some(LekkoKind::DoubleValue(*context_value)),
                     },
                 )]);
 
                 match bucket(&bucket_f, &context, eval_context) {
-                    Ok(res) => assert_eq!(
-                        expected, &res,
-                        "key: {}, expected: {}, actual: {}",
-                        key, expected, res
-                    ),
+                    Ok(res) => assert_bucket(expected, &res, context_value, eval_context),
                     _ => println!("unexpected error"),
                 }
             }
@@ -230,31 +240,31 @@ mod tests {
                 (String::from("hello"), false),
                 (String::from("world"), false),
                 (String::from("i"), true),
-                (String::from("am"), false),
-                (String::from("a"), false),
-                (String::from("unit"), true),
-                (String::from("test"), false),
+                (String::from("am"), true),
+                (String::from("a"), true),
+                (String::from("unit"), false),
+                (String::from("test"), true),
                 (String::from("case"), true),
-                (String::from("for"), true),
-                (String::from("bucket"), true),
+                (String::from("for"), false),
+                (String::from("bucket"), false),
             ],
             vec![
-                (String::from("hello"), false),
+                (String::from("hello"), true),
                 (String::from("world"), false),
                 (String::from("i"), true),
                 (String::from("am"), true),
-                (String::from("a"), false),
-                (String::from("unit"), true),
+                (String::from("a"), true),
+                (String::from("unit"), false),
                 (String::from("test"), true),
                 (String::from("case"), false),
-                (String::from("for"), true),
+                (String::from("for"), false),
                 (String::from("bucket"), false),
             ],
         ];
 
         for (eval_i, eval_context) in setup.eval_contexts.iter().enumerate() {
             for test_case in test_cases[eval_i].iter() {
-                let (key, expected) = test_case;
+                let (context_value, expected) = test_case;
 
                 // 50% bucketing
                 let bucket_f = Bucket {
@@ -264,16 +274,12 @@ mod tests {
                 let context = HashMap::from([(
                     String::from("key"),
                     LekkoValue {
-                        kind: Some(LekkoKind::StringValue(key.to_owned())),
+                        kind: Some(LekkoKind::StringValue(context_value.to_owned())),
                     },
                 )]);
 
                 match bucket(&bucket_f, &context, eval_context) {
-                    Ok(res) => assert_eq!(
-                        expected, &res,
-                        "key: {}, expected: {}, actual: {}",
-                        key, expected, res
-                    ),
+                    Ok(res) => assert_bucket(expected, &res, context_value, eval_context),
                     _ => println!("unexpected error"),
                 }
             }

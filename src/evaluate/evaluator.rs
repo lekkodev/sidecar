@@ -15,9 +15,8 @@ use super::rules_v3::check_rule as check_rule_v3;
 // Information required to evaluate rules but not part of the feature's
 // context.
 pub struct EvalContext {
-    pub owner_name: String,
-    pub repo_name: String,
     pub namespace: String,
+    pub feature_name: String,
 }
 
 // Performs evaluation of the feature tree using the given context.
