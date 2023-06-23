@@ -2,25 +2,24 @@ use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
 use metrics::counter;
 use prost::Message;
-use sidecar::gen::mod_cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
-use sidecar::gen::mod_cli::lekko::backend::v1beta1::GetRepositoryContentsRequest;
-use sidecar::gen::mod_cli::lekko::backend::v1beta1::GetRepositoryContentsResponse;
-use sidecar::gen::mod_cli::lekko::backend::v1beta1::RepositoryKey;
-
-use log::{error, log};
+use sidecar::gen::cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
+use sidecar::gen::cli::lekko::backend::v1beta1::GetRepositoryContentsRequest;
+use sidecar::gen::cli::lekko::backend::v1beta1::GetRepositoryContentsResponse;
+use sidecar::gen::cli::lekko::backend::v1beta1::Namespace;
+use sidecar::gen::cli::lekko::backend::v1beta1::RepositoryKey;
 use sidecar::logging;
-use sidecar::metrics::Metrics;
 use sidecar::metrics::RuntimeMetrics;
+use sidecar::types::add_api_key;
+use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::fs::{create_dir_all, File};
 use std::io::Write;
-use std::net::SocketAddr;
-use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 use tonic::codegen::CompressionEncoding;
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::Uri;
+use yaml_rust::Yaml;
 
 // Struct containing all the cmd-line args we accept
 #[derive(Parser)]
@@ -45,20 +44,20 @@ struct Args {
     /// If unset, the binary will exit, functioning as an init container.
     poll_interval: Option<Duration>,
 
-    #[arg(short, long, value_parser=parse_duration, default_value="15s")]
+    #[arg(short, long)]
     /// The url for the repo in "owner_name/repo_name" format, such as:
     /// lekkodev/example, representing github.com/lekkodev/example.
     repo_url: String,
 
     #[arg(short, long)]
     /// Absolute path to write to on desk. Application must have RW permission.
-    repo_path: String,
+    output_path: String,
 }
 
 impl Debug for Args {
     // We manually implement Debug in order to avoid printing the api key.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{{ lekko_addr: {}, api_key: {:?}, metrics_bind_addr: {}, poll_interval: {:?}, repo_path: {} repo_url: {}}}", self.lekko_addr, "<lekko api key>", self.metrics_bind_addr, self.poll_interval, self.repo_path, self.repo_url))
+        f.write_fmt(format_args!("{{ lekko_addr: {}, api_key: {:?}, metrics_bind_addr: {}, poll_interval: {:?}, output_path: {} repo_url: {}}}", self.lekko_addr, "<lekko api key>", self.metrics_bind_addr, self.poll_interval, self.output_path, self.repo_url))
     }
 }
 
@@ -110,36 +109,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let res = dist_client
         .clone()
-        .get_repository_contents(GetRepositoryContentsRequest {
-            repo_key: Some(RepositoryKey {
-                owner_name: owner.to_owned(),
-                repo_name: repo.to_owned(),
-            }),
-            feature_name: "".to_string(),
-            namespace_name: "".to_string(),
-            session_key: "".to_string(),
-        })
+        .get_repository_contents(add_api_key(
+            GetRepositoryContentsRequest {
+                repo_key: Some(RepositoryKey {
+                    owner_name: owner.to_owned(),
+                    repo_name: repo.to_owned(),
+                }),
+                feature_name: "".to_string(),
+                namespace_name: "".to_string(),
+                session_key: "".to_string(),
+            },
+            args.api_key,
+        ))
         .await
         .unwrap_or_else(|e| panic!("error performing initial fetch: {:?}", e))
         .into_inner();
     let sha = res.commit_sha.clone();
-    if let Err(err) = write_to_path(res, &args.repo_path) {
-        panic!("error writing results to disk: {:?}", err),
+    if let Err(err) = write_to_path(res, &args.output_path) {
+        panic!("error writing results to disk: {:?}", err);
     }
-    log::info!("sync completed of {sha} to {}", args.repo_path);
+    log::info!("sync completed of {sha} to {}", args.output_path);
     Ok(())
 }
 
 fn write_to_path(res: GetRepositoryContentsResponse, dest_path: &str) -> Result<(), tonic::Status> {
     let mut path = PathBuf::new();
     path.push(dest_path);
+    write_git(path.as_os_str(), &res.commit_sha)?;
+    path.push("lekko.root.yaml");
+    write_root_yaml(path.as_os_str(), &res.namespaces)?;
+    path.pop();
     for ns in res.namespaces {
         path.push(ns.name);
         path.push("gen");
         path.push("proto");
         create_dir_all(&path).map_err(|e| tonic::Status::internal(e.to_string()))?;
         for f in ns.features {
-            path.push(f.name);
+            path.push(format!("{}.proto.bin", f.name));
             let mut file =
                 File::create(&path).map_err(|e| tonic::Status::internal(e.to_string()))?;
             let vec = f.feature.unwrap().encode_to_vec();
@@ -152,4 +158,53 @@ fn write_to_path(res: GetRepositoryContentsResponse, dest_path: &str) -> Result<
         path.pop();
     }
     Ok(())
+}
+
+struct FmtToIoWriter<W> {
+    writer: W,
+}
+
+impl<W> std::fmt::Write for FmtToIoWriter<W>
+where
+    W: std::io::Write,
+{
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        if self.writer.write(s.as_bytes()).is_err() {
+            return Err(std::fmt::Error);
+        }
+        Ok(())
+    }
+}
+
+fn write_git(root_path: &OsStr, head_sha: &str) -> Result<(), tonic::Status> {
+    let mut p = PathBuf::new();
+    p.push(root_path);
+    p.push(".git");
+    create_dir_all(&p).map_err(|e| tonic::Status::internal(e.to_string()))?;
+    p.push("HEAD");
+    let mut head = File::create(&p).map_err(|e| tonic::Status::internal(e.to_string()))?;
+    writeln!(head, "{head_sha}").map_err(|e| tonic::Status::internal(e.to_string()))?;
+    Ok(())
+}
+
+fn write_root_yaml(yaml_path: &OsStr, namespaces: &[Namespace]) -> Result<(), tonic::Status> {
+    let mut file = FmtToIoWriter {
+        writer: File::create(yaml_path).map_err(|e| tonic::Status::internal(e.to_string()))?,
+    };
+    let mut yaml = yaml_rust::YamlEmitter::new(&mut file);
+    let val = Yaml::Hash(
+        [(
+            Yaml::String("namespaces".to_string()),
+            Yaml::Array(
+                namespaces
+                    .iter()
+                    .map(|s| Yaml::String(s.name.clone()))
+                    .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+    );
+    yaml.dump(&val)
+        .map_err(|e| tonic::Status::internal(e.to_string()))
 }

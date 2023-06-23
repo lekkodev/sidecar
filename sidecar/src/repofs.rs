@@ -90,7 +90,10 @@ impl RepoFS {
         let lekko_root_path = format!("{:}/lekko.root.yaml", self.contents_path.to_owned());
         let yaml = match read_to_string(&lekko_root_path) {
             Ok(contents) => match YamlLoader::load_from_str(contents.as_ref()) {
-                Ok(docs) => docs[0].to_owned(),
+                Ok(docs) => docs
+                    .get(0)
+                    .ok_or_else(|| Status::internal("invalid lekko.root.yaml"))?
+                    .to_owned(),
                 Err(e) => {
                     return Err(Status::internal(format!(
                         "failed to parse lekko yaml: {e:?}",
