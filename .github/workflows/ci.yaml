@@ -8,9 +8,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: ci
-        if: success()
-        run: make
       - name: checkout config
         uses: actions/checkout@v3
         with:
@@ -19,6 +16,6 @@ jobs:
           path: ci-example
       - name: run sidecar
         run: |
-          docker run --name sidecar -d -p 50051:50051 -v $GITHUB_WORKSPACE/ci-example/:/root/example/ public.ecr.aws/g0r8j2n2/lekko/sidecar:v0.0.13 --repo-path=/root/example/ --mode=static
-          sleep 3
-          docker logs sidecar
+          cargo run -- --repo-path=$GITHUB_WORKSPACE/ci-example --mode=static
+      - name: ci
+        run: make
