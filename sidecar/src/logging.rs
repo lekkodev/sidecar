@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
-use log::log_enabled;
-
-use crate::gen::mod_sdk::lekko::client::v1beta1::{
+use crate::gen::sdk::lekko::client::v1beta1::{
     GetBoolValueRequest, GetFloatValueRequest, GetIntValueRequest, GetJsonValueRequest,
     GetProtoValueRequest, GetStringValueRequest, RepositoryKey, Value,
 };
+use log::log_enabled;
 
 pub fn init() {
     env_logger::init_from_env(

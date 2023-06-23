@@ -6,15 +6,15 @@ use prost_types::{value::Kind, Any};
 use tonic::{body::BoxBody, metadata::MetadataMap, Request, Response, Status};
 
 use crate::{
-    evaluate::evaluator::evaluate,
-    gen::mod_cli::lekko::{backend::v1beta1::RepositoryKey, feature::v1beta1::FeatureType},
-    gen::mod_sdk::lekko::client::v1beta1::{
+    evaluate::evaluator::{evaluate, EvalContext},
+    gen::cli::lekko::{backend::v1beta1::RepositoryKey, feature::v1beta1::FeatureType},
+    gen::sdk::lekko::client::v1beta1::{
         configuration_service_client::ConfigurationServiceClient,
-        configuration_service_server::ConfigurationService, DeregisterRequest, DeregisterResponse,
-        GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest, GetFloatValueResponse,
-        GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest, GetJsonValueResponse,
-        GetProtoValueRequest, GetProtoValueResponse, GetStringValueRequest, GetStringValueResponse,
-        RegisterRequest, RegisterResponse, Value,
+        configuration_service_server::ConfigurationService, Any as LekkoAny, DeregisterRequest,
+        DeregisterResponse, GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest,
+        GetFloatValueResponse, GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest,
+        GetJsonValueResponse, GetProtoValueRequest, GetProtoValueResponse, GetStringValueRequest,
+        GetStringValueResponse, RegisterRequest, RegisterResponse, Value,
     },
     logging::InsertLogFields,
     metrics::Metrics,
@@ -56,7 +56,11 @@ impl Service {
                 requested_type.as_str_name()
             )));
         }
-        let eval_result = evaluate(&feature_data.feature, context)?;
+        let eval_context = EvalContext {
+            namespace: feature.namespace.to_owned(),
+            feature_name: feature_data.feature.key.to_owned(),
+        };
+        let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         if let Some(m) = self.metrics.as_ref() {
             m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
         }
@@ -206,7 +210,15 @@ impl ConfigurationService for Service {
         };
 
         let any = self.get_value_local(params, &inner.context, FeatureType::Proto)?;
-        Ok(inner.insert_log_fields(Response::new(GetProtoValueResponse { value: Some(any) })))
+        Ok(
+            inner.insert_log_fields(Response::new(GetProtoValueResponse {
+                value: Some(any.clone()),
+                value_v2: Some(LekkoAny {
+                    type_url: any.clone().type_url,
+                    value: any.value,
+                }),
+            })),
+        )
     }
 
     async fn get_json_value(

@@ -6,22 +6,29 @@ use prost_types::{
 };
 use tonic::Status;
 
-use crate::gen::{
-    mod_cli::lekko::rules::v1beta3::{
-        rule::Rule::{Atom, BoolConst, LogicalExpression, Not},
-        ComparisonOperator as CmpOp,
-        LogicalOperator::{self, And, Or},
-        Rule,
-    },
-    mod_sdk::lekko::client::{
-        self, v1beta1::value::Kind as LekkoKind, v1beta1::Value as LekkoValue,
-    },
+use crate::gen::sdk::lekko::client::{
+    self, v1beta1::value::Kind as LekkoKind, v1beta1::Value as LekkoValue,
 };
+
+use crate::gen::cli::lekko::rules::v1beta3::{
+    call_expression::Function,
+    rule::Rule::{Atom, BoolConst, CallExpression, LogicalExpression, Not},
+    ComparisonOperator as CmpOp,
+    LogicalOperator::{self, And, Or},
+    Rule,
+};
+
+use super::evaluator::EvalContext;
+use super::functions::bucket;
 
 // TODO: make all error messages contain dynamic variable info.
 // check_rule evaluates the rule using the given context to determine whether or not the rule passed.
 // it is a recursive method.
-pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<bool, Status> {
+pub fn check_rule(
+    rule: &Rule,
+    context: &HashMap<String, LekkoValue>,
+    eval_context: &EvalContext,
+) -> Result<bool, Status> {
     let r = rule
         .rule
         .as_ref()
@@ -30,12 +37,13 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
         // Base case
         BoolConst(b) => Ok(*b),
         // Recursive case
-        Not(not_rule) => Ok(!check_rule(not_rule.as_ref(), context)?),
+        Not(not_rule) => Ok(!check_rule(not_rule.as_ref(), context, eval_context)?),
         // Recursive case
         LogicalExpression(le) => Ok(check_rules(
             le.rules.as_ref(),
             &le.logical_operator(),
             context,
+            eval_context,
         )?),
         // Base case
         Atom(a) => {
@@ -87,6 +95,15 @@ pub fn check_rule(rule: &Rule, context: &HashMap<String, LekkoValue>) -> Result<
                 CmpOp::Unspecified => Err(Status::internal("unknown comparison operator")),
             }
         }
+        CallExpression(ce) => {
+            let function = ce
+                .function
+                .as_ref()
+                .ok_or_else(|| Status::internal("empty function"))?;
+            match function {
+                Function::Bucket(bucket_f) => bucket(bucket_f, context, eval_context),
+            }
+        }
     }
 }
 
@@ -94,12 +111,15 @@ pub fn check_rules(
     rules: &Vec<Rule>,
     operator: &LogicalOperator,
     context: &HashMap<String, LekkoValue>,
+    eval_context: &EvalContext,
 ) -> Result<bool, Status> {
     if rules.is_empty() {
         return Err(Status::internal("no rules found in logical expression"));
     }
-    let result: Result<Vec<bool>, Status> =
-        rules.iter().map(|rule| check_rule(rule, context)).collect();
+    let result: Result<Vec<bool>, Status> = rules
+        .iter()
+        .map(|rule| check_rule(rule, context, eval_context))
+        .collect();
     return match (result, operator) {
         (_, LogicalOperator::Unspecified) => Err(Status::internal("unknown logical operator")),
         (Err(e), _) => Err(e),

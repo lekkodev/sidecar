@@ -2,5 +2,3 @@
 
 members = ["sidecar","lekkod"]
 default-members = ["sidecar","lekkod"]
-
-

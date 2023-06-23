@@ -14,7 +14,12 @@ You need a few external dependencies to re-build the proto & grpc stubs.
 cargo install protoc-gen-prost
 cargo install protoc-gen-prost-crate
 cargo install protoc-gen-tonic
-buf generate --template buf.gen.yaml buf.build/lekkodev/cli
+```
+
+To regenerate protos, run 
+
+```
+make generate
 ```
 
 ### Building docker files

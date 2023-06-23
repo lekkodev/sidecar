@@ -10,7 +10,7 @@ use tonic::Status;
 use yaml_rust::YamlLoader;
 
 use crate::{
-    gen::mod_cli::lekko::{
+    gen::cli::lekko::{
         backend::v1beta1::{Feature, GetRepositoryContentsResponse, Namespace, RepositoryKey},
         feature,
     },
