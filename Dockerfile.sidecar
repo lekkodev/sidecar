@@ -29,18 +29,18 @@ RUN rustup target add $(cat /rust_target.txt)
 
 RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build -p sidecar --release --target $(cat /rust_target.txt)
 
-COPY sidecar/src /workspace/sidecar/scr
+COPY sidecar/src /workspace/sidecar/src
 
 # prevents a cached lib.rs compile
-RUN touch /workspace/src/sidecar/lib.rs
+RUN touch /workspace/sidecar/src/lib.rs
 
 # This is the actual application build.
-RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build --release --target $(cat /rust_target.txt)
+RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build -p sidecar --release --target $(cat /rust_target.txt)
 
-RUN cp target/$(cat /rust_target.txt)/release/sidecar .
+RUN cp target/$(cat /rust_target.txt)/release/sidecar sidecar-bin
 
 FROM --platform=${TARGETPLATFORM} debian:bullseye-slim
 
-COPY --from=builder /workspace/sidecar /usr/local/bin/sidecar
+COPY --from=builder /workspace/sidecar-bin /usr/local/bin/sidecar
 
 ENTRYPOINT ["/usr/local/bin/sidecar"]
