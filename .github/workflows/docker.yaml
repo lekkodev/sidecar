@@ -1,5 +1,8 @@
 name: docker
 on: push
+permissions:
+  contents: read
+  id-token: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,12 +17,14 @@ jobs:
       - name: check that config exists
         run: |
           ls -lash $GITHUB_WORKSPACE/lekkodev/example
-      - name: Build sidecar
-        run: |
-          docker build -t sidecar -f Dockerfile.sidecar .
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::525250420071:role/github_actions_rw_ecr_backend
+          aws-region: us-east-1
       - name: Run sidecar
         run: |
-          docker run --name sidecar -d -p 50051:50051 -v $GITHUB_WORKSPACE/lekkodev/example:/root/lekkodev/example sidecar --repo-path=/root/lekkodev/example --mode=static
+          docker run --name sidecar -d -p 50051:50051 -v $GITHUB_WORKSPACE/lekkodev/example:/root/lekkodev/example 525250420071.dkr.ecr.us-east-1.amazonaws.com/lekko/sidecar:2023-06-23_cb2022a14a8c8ff3a269c99ea11000bae87e01bf --repo-path=/root/lekkodev/example --mode=static
       - uses: bufbuild/buf-setup-action@v1
         with:
           buf_user: ${{ secrets.BUF_USER }}
