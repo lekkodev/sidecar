@@ -220,7 +220,7 @@ impl RepoFS {
             None => return Err(Status::internal("no remote found for repo")),
         };
         let (owner_name, repo_name) = get_owner_and_repo(&default_remote)
-            .ok_or_else(|| Status::internal("invalid remote {default_remote}"))?;
+            .ok_or_else(|| Status::internal(format!("invalid remote {default_remote}")))?;
         Ok(RepositoryKey {
             owner_name,
             repo_name,

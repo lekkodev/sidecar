@@ -14,9 +14,12 @@ jobs:
       - name: check that config exists
         run: |
           ls -lash $GITHUB_WORKSPACE/lekkodev/example
+      - name: Build sidecar
+        run: |
+          docker build -t sidecar -f Dockerfile.sidecar .
       - name: Run sidecar
         run: |
-          docker run --name sidecar -d -p 50051:50051 -v $GITHUB_WORKSPACE/lekkodev/example:/root/lekkodev/example public.ecr.aws/g0r8j2n2/lekko/sidecar:v0.0.13 --repo-path=/root/lekkodev/example --mode=static
+          docker run --name sidecar -d -p 50051:50051 -v $GITHUB_WORKSPACE/lekkodev/example:/root/lekkodev/example sidecar --repo-path=/root/lekkodev/example --mode=static
       - uses: bufbuild/buf-setup-action@v1
         with:
           buf_user: ${{ secrets.BUF_USER }}
