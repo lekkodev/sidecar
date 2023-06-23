@@ -90,7 +90,10 @@ impl RepoFS {
         let lekko_root_path = format!("{:}/lekko.root.yaml", self.contents_path.to_owned());
         let yaml = match read_to_string(&lekko_root_path) {
             Ok(contents) => match YamlLoader::load_from_str(contents.as_ref()) {
-                Ok(docs) => docs[0].to_owned(),
+                Ok(docs) => docs
+                    .get(0)
+                    .ok_or_else(|| Status::internal("invalid lekko.root.yaml"))?
+                    .to_owned(),
                 Err(e) => {
                     return Err(Status::internal(format!(
                         "failed to parse lekko yaml: {e:?}",
@@ -200,15 +203,13 @@ impl RepoFS {
     // Determines the repo key based on the default remote of the
     // repository.
     pub fn repo_key(&self) -> Result<RepositoryKey, Status> {
-        let repo = match git_repository::open(Path::new(&self.repo_path)) {
+        let repo = match gix::open(Path::new(&self.repo_path)) {
             Ok(r) => r,
             Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
         };
-        let default_remote: String = match repo
-            .find_default_remote(git_repository::remote::Direction::Fetch)
-        {
+        let default_remote: String = match repo.find_default_remote(gix::remote::Direction::Fetch) {
             Some(Ok(branch)) => branch
-                .url(git_repository::remote::Direction::Fetch)
+                .url(gix::remote::Direction::Fetch)
                 .map(|url| {
                     url.path
                         .clone()
@@ -229,7 +230,7 @@ impl RepoFS {
 
     // Determines the git commit sha of HEAD.
     pub fn git_commit_sha(&self) -> Result<String, Status> {
-        let repo = match git_repository::open(Path::new(&self.repo_path)) {
+        let repo = match gix::open(Path::new(&self.repo_path)) {
             Ok(r) => r,
             Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
         };

@@ -1,10 +1,14 @@
-FROM --platform=${BUILDPLATFORM} rust:1.64-bullseye as builder
+FROM --platform=${BUILDPLATFORM} rust:1.67-bullseye as builder
 
 WORKDIR /workspace
 
+RUN mkdir sidecar && mkdir lekkod
+
+COPY sidecar/Cargo.toml /workspace/sidecar/Cargo.toml
+COPY lekkod/Cargo.toml /workspace/lekkod/Cargo.toml
 COPY Cargo.toml Cargo.lock /workspace/
 
-RUN mkdir src && touch src/lib.rs
+RUN mkdir sidecar/src && touch sidecar/src/lib.rs && mkdir lekkod/src && touch lekkod/src/lib.rs
 
 RUN touch /rust_target.txt /apt_deps.txt /cc.txt /rust_flags.txt /ar.txt
 
@@ -23,20 +27,20 @@ RUN apt-get update && (cat /apt_deps.txt | xargs apt-get install -y)
 
 RUN rustup target add $(cat /rust_target.txt)
 
-RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build --release --target $(cat /rust_target.txt)
+RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build -p sidecar --release --target $(cat /rust_target.txt)
 
-COPY src /workspace/src
+COPY sidecar/src /workspace/sidecar/src
 
 # prevents a cached lib.rs compile
-RUN touch /workspace/src/lib.rs
+RUN touch /workspace/sidecar/src/lib.rs
 
 # This is the actual application build.
-RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build --release --target $(cat /rust_target.txt)
+RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build -p sidecar --release --target $(cat /rust_target.txt)
 
-RUN cp target/$(cat /rust_target.txt)/release/sidecar .
+RUN cp target/$(cat /rust_target.txt)/release/sidecar sidecar-bin
 
 FROM --platform=${TARGETPLATFORM} debian:bullseye-slim
 
-COPY --from=builder /workspace/sidecar /usr/local/bin/sidecar
+COPY --from=builder /workspace/sidecar-bin /usr/local/bin/sidecar
 
 ENTRYPOINT ["/usr/local/bin/sidecar"]
