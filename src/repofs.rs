@@ -215,7 +215,7 @@ impl RepoFS {
                         .try_into()
                         .map_err(|e| Status::internal(format!("error fetching remote {e}")))
                 })
-                .ok_or_else(|| Status::internal("no remote found for repo"))??,
+                .ok_or_else(|| Status::internal("no remote url found for repo"))??,
             Some(Err(err)) => return Err(Status::internal(format!("error fetching remote {err}"))),
             None => return Err(Status::internal("no remote found for repo")),
         };

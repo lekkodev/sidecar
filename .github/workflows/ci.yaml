@@ -11,3 +11,14 @@ jobs:
       - name: ci
         if: success()
         run: make
+      - name: checkout config
+        uses: actions/checkout@v3
+        with:
+          repository: lekkodev/example
+          token: ${{ secrets.LEKKO_CI_GITHUB_PAT }}
+          path: ci-example
+      - name: run sidecar
+        run: |
+          docker run --name sidecar -d -p 50051:50051 -v $GITHUB_WORKSPACE/ci-example/:/root/example/ public.ecr.aws/g0r8j2n2/lekko/sidecar:v0.0.13 --repo-path=/root/example/ --mode=static
+          sleep 3
+          docker logs sidecar
