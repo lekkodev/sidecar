@@ -1593,6 +1593,7 @@ dependencies = [
  "hyper-rustls",
  "log",
  "metrics",
+ "prost",
  "sidecar",
  "tokio",
  "tonic",

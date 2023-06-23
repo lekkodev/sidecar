@@ -15,3 +15,4 @@ hyper = { version="0.14", features=["full"] }
 hyper-rustls = { version="0.23", features=["webpki-roots", "http2"] }
 log = "0.4"
 metrics = "0.21.0"
+prost = "0.11"

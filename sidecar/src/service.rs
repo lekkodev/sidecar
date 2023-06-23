@@ -82,7 +82,6 @@ impl ConfigurationService for Service {
                 requested_rk, self.repo_key
             )));
         }
-
         Ok(Response::new(RegisterResponse::default()))
     }
 

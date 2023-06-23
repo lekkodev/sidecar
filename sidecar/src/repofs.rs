@@ -204,9 +204,7 @@ impl RepoFS {
             Ok(r) => r,
             Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
         };
-        let default_remote: String = match repo
-            .find_default_remote(gix::remote::Direction::Fetch)
-        {
+        let default_remote: String = match repo.find_default_remote(gix::remote::Direction::Fetch) {
             Some(Ok(branch)) => branch
                 .url(gix::remote::Direction::Fetch)
                 .map(|url| {
