@@ -6,18 +6,18 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: checkout config
+      - name: ci
+        run: make
+      - name: checkout lekkodev/integration-test
         uses: actions/checkout@v3
         with:
-          repository: lekkodev/example
+          repository: lekkodev/integration-test
           token: ${{ secrets.LEKKO_CI_GITHUB_PAT }}
-          path: ci-example
+          path: ci-integration-test
       - name: run sidecar
         run: |
           cargo build
-          cargo run -- --repo-path=$GITHUB_WORKSPACE/ci-example --mode=static > sidecar-out.log 2>&1 &
+          cargo run -- --repo-path=$GITHUB_WORKSPACE/ci-integration-test --mode=static > sidecar-out.log 2>&1 &
       - uses: bufbuild/buf-setup-action@v1
         with:
           buf_user: ${{ secrets.BUF_USER }}
@@ -25,10 +25,7 @@ jobs:
           github_token: ${{ secrets.LEKKO_CI_GITHUB_PAT }}
       - name: read cargo logs
         run: |
-          sleep 3
           cat sidecar-out.log
       - name: query sidecar
         run: |
-          buf curl --data '{"namespace": "default", "key": "hello", "repoKey": {"ownerName": "lekkodev", "repoName": "example"}}' --protocol grpc --http2-prior-knowledge --schema buf.build/lekkodev/sdk http://localhost:50051/lekko.client.v1beta1.ConfigurationService/GetStringValue
-      - name: ci
-        run: make
+          buf curl --data '{"namespace": "default", "key": "example", "repoKey": {"ownerName": "lekkodev", "repoName": "integration-test"}}' --protocol grpc --http2-prior-knowledge --schema buf.build/lekkodev/sdk http://localhost:50051/lekko.client.v1beta1.ConfigurationService/GetBoolValue
