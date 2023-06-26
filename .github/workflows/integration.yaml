@@ -1,31 +1,29 @@
-name: docker-integration
-on: workflow_dispatch
+name: integration
+on: push
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: checkout
+        uses: actions/checkout@v3
       - name: checkout lekkodev/integration-test
         uses: actions/checkout@v3
         with:
           repository: lekkodev/integration-test
           token: ${{ secrets.LEKKO_CI_GITHUB_PAT }}
-          path: lekkodev/integration-test
-      - name: Build sidecar
+          path: ci-integration-test
+      - name: run sidecar
         run: |
-          docker buildx build -t sidecar:current -f Dockerfile.sidecar .
-      - name: Run sidecar
-        run: |
-          docker run --name sidecar -d -p 50051:50051 -v $GITHUB_WORKSPACE/lekkodev/integration-test:/root/lekkodev/integration-test sidecar:current --repo-path=/root/lekkodev/integration-test --mode=static
+          cargo build
+          cargo run --bin sidecar -- --repo-path=$GITHUB_WORKSPACE/ci-integration-test --mode=static > sidecar-out.log 2>&1 &
       - uses: bufbuild/buf-setup-action@v1
         with:
           buf_user: ${{ secrets.BUF_USER }}
           buf_api_token: ${{ secrets.BUF_API_TOKEN }}
           github_token: ${{ secrets.LEKKO_CI_GITHUB_PAT }}
-      - name: read docker logs
+      - name: read cargo logs
         run: |
-          sleep 3
-          docker logs sidecar
+          cat sidecar-out.log
       - name: query sidecar
         run: |
           buf curl --data '{"namespace": "default", "key": "example", "repoKey": {"ownerName": "lekkodev", "repoName": "integration-test"}}' --protocol grpc --http2-prior-knowledge --schema buf.build/lekkodev/sdk http://localhost:50051/lekko.client.v1beta1.ConfigurationService/GetBoolValue

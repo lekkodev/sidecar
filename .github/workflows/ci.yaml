@@ -17,7 +17,7 @@ jobs:
       - name: run sidecar
         run: |
           cargo build
-          cargo run -- --repo-path=$GITHUB_WORKSPACE/ci-integration-test --mode=static > sidecar-out.log 2>&1 &
+          cargo run --bin sidecar -- --repo-path=$GITHUB_WORKSPACE/ci-integration-test --mode=static > sidecar-out.log 2>&1 &
       - uses: bufbuild/buf-setup-action@v1
         with:
           buf_user: ${{ secrets.BUF_USER }}
