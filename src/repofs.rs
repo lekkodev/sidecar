@@ -1,9 +1,10 @@
 use std::{
-    fs::{self, read, read_dir, read_to_string},
+    fs::{read, read_dir, read_to_string},
     path::Path,
 };
 
-use log::{debug, info, warn};
+use git_repository::bstr::ByteSlice;
+use log::{debug, warn};
 use prost::Message;
 use sha1::Digest;
 use tonic::Status;
@@ -200,44 +201,24 @@ impl RepoFS {
     // Determines the repo key based on the default remote of the
     // repository.
     pub fn repo_key(&self) -> Result<RepositoryKey, Status> {
-        let repo = match git_repository::open(Path::new(&self.repo_path)) {
-            Ok(r) => r,
-            Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
+        let gitpath = Path::new(&self.repo_path).join(Path::new(".git"));
+        let config_file = git_config::File::from_git_dir(gitpath)
+            .map_err(|e| Status::internal(format!("invalid config file at path: {}", e)))?;
+        let origin = config_file
+            .section_by_key("remote.origin")
+            .map_err(|e| Status::internal(format!("cannot find section remote {}", e)))?;
+        let url_bytes = match origin
+            .value("url")
+            .ok_or_else(|| Status::internal("cannot find url in remote section"))
+        {
+            Ok(ub) => ub,
+            Err(e) => return Err(e),
         };
-        let path = std::path::Path::new(&self.repo_path);
-        info!("repo_key. repo_path: {:}", path.display());
-        info!("repo_key. repo_path exists: {}", path.exists());
-        let gitpath = path.join(std::path::Path::new(".git"));
-        info!("repo_key. gitpath: {:}", gitpath.display());
-        info!("repo_key. gitpath exists: {}", gitpath.exists());
-        info!("repo_key. remote names: {:?}", repo.remote_names());
-        info!("repo_key. config snapshot: \n{:?}", repo.config_snapshot());
-        let config_file_path = gitpath.join(std::path::Path::new("config"));
-        let config_file_contents = fs::read_to_string(config_file_path.clone())?;
-        info!("config file contents:\n{}", config_file_contents);
-        let x = git_config::File::from_git_dir(gitpath).map_err(|e| Status::internal(format!("invalid config file at path: {}", e)))?;
-        // let x = git_config::File::from_path_no_includes(config_file_path, git_config::Source::Local).map_err(|e| Status::internal(format!("invalid config file at path: {}", e)))?;
-        let section = x.section_by_key("remote.origin").map_err(|e| Status::internal(format!("cannot find section remote {}", e)))?;
-        let url_cow = section.value("url").ok_or_else(|| Status::internal(format!("cannot find url in remote section")))?;
-        info!("cow url: {:?}", url_cow.as_ref());
-        let default_remote_url: String = match repo.find_remote("origin") {
-            Ok(branch) => branch
-                .url(git_repository::remote::Direction::Fetch)
-                .map(|url| {
-                    url.path
-                        .clone()
-                        .try_into()
-                        .map_err(|e| Status::internal(format!("error utf decoding remote url {e}")))
-                })
-                .ok_or_else(|| Status::internal("no remote url found for origin"))??,
-            Err(err) => {
-                return Err(Status::internal(format!(
-                    "error fetching remote origin {err}"
-                )))
-            }
-        };
-        let (owner_name, repo_name) = get_owner_and_repo(&default_remote_url)
-            .ok_or_else(|| Status::internal(format!("invalid remote url {default_remote_url}")))?;
+        let url = url_bytes
+            .to_str()
+            .map_err(|e| Status::internal(format!("decode url string error: {}", e)))?;
+        let (owner_name, repo_name) = get_owner_and_repo(url)
+            .ok_or_else(|| Status::internal(format!("invalid remote url {url}")))?;
         Ok(RepositoryKey {
             owner_name,
             repo_name,
