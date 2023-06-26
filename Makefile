@@ -79,7 +79,7 @@ dockerbuild$(1): dockerbuilddeps$(1)
 .PHONY: dockerpush$(1)
 dockerpush$(1): dockerbuilddeps$(1)
 # TODO: some main branch protection, check if there are any local changes, etc.
-	$(eval GIT_HASH := $(shell git rev-parse main))
+	$(eval GIT_HASH := $(shell git rev-parse HEAD))
 	$(eval DATE := $(shell date +'%Y-%m-%d'))
 	$(eval TAG := $(DATE)_$(GIT_HASH))
 	@read -p "Do you want to create and push a git tag in this format: $(TAG) [Press any key to continue]: "
