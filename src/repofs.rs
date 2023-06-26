@@ -1,5 +1,5 @@
 use std::{
-    fs::{read, read_dir, read_to_string},
+    fs::{self, read, read_dir, read_to_string},
     path::Path,
 };
 
@@ -211,10 +211,21 @@ impl RepoFS {
         info!("repo_key. gitpath: {:}", gitpath.display());
         info!("repo_key. gitpath exists: {}", gitpath.exists());
         info!("repo_key. remote names: {:?}", repo.remote_names());
-        info!("repo_key. config snapshot: {:?}", repo.config_snapshot());
-        let default_remote_name = match repo.remote_default_name(git_repository::remote::Direction::Fetch).ok_or_else(|| Status::internal("no default remote name found")) {
+        info!("repo_key. config snapshot: \n{:?}", repo.config_snapshot());
+        let config_file_contents =
+            fs::read_to_string(gitpath.join(std::path::Path::new("config")))?;
+        info!("config file contents:\n{}", config_file_contents);
+        let default_remote_name = match repo
+            .remote_default_name(git_repository::remote::Direction::Fetch)
+            .ok_or_else(|| Status::internal("no default remote name found"))
+        {
             Ok(z) => z,
-            Err(e) => return Err(Status::internal(format!("error finding default remote name: {:}", e))),
+            Err(e) => {
+                return Err(Status::internal(format!(
+                    "error finding default remote name: {:}",
+                    e
+                )))
+            }
         };
         info!("repo_key. remote default name: {}", default_remote_name);
         let default_remote_url: String = match repo.find_remote("origin") {
