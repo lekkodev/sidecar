@@ -1,13 +1,11 @@
-name: ci
+name: integration
 on: push
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
         uses: actions/checkout@v3
-      - name: ci
-        run: make
       - name: checkout lekkodev/integration-test
         uses: actions/checkout@v3
         with:

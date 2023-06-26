@@ -3,6 +3,7 @@ use std::{
     path::Path,
 };
 
+use gix::bstr::ByteSlice;
 use log::{debug, warn};
 use prost::Message;
 use sha1::Digest;
@@ -203,25 +204,24 @@ impl RepoFS {
     // Determines the repo key based on the default remote of the
     // repository.
     pub fn repo_key(&self) -> Result<RepositoryKey, Status> {
-        let repo = match gix::open(Path::new(&self.repo_path)) {
-            Ok(r) => r,
-            Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
+        let gitpath = Path::new(&self.repo_path).join(Path::new(".git"));
+        let config_file = gix_config::File::from_git_dir(gitpath)
+            .map_err(|e| Status::internal(format!("invalid config file at path: {}", e)))?;
+        let origin = config_file
+            .section_by_key("remote.origin")
+            .map_err(|e| Status::internal(format!("cannot find section remote {}", e)))?;
+        let url_bytes = match origin
+            .value("url")
+            .ok_or_else(|| Status::internal("cannot find url in remote section"))
+        {
+            Ok(ub) => ub,
+            Err(e) => return Err(e),
         };
-        let default_remote: String = match repo.find_default_remote(gix::remote::Direction::Fetch) {
-            Some(Ok(branch)) => branch
-                .url(gix::remote::Direction::Fetch)
-                .map(|url| {
-                    url.path
-                        .clone()
-                        .try_into()
-                        .map_err(|e| Status::internal(format!("error fetching remote {e}")))
-                })
-                .ok_or_else(|| Status::internal("no remote found for repo"))??,
-            Some(Err(err)) => return Err(Status::internal(format!("error fetching remote {err}"))),
-            None => return Err(Status::internal("no remote found for repo")),
-        };
-        let (owner_name, repo_name) = get_owner_and_repo(&default_remote)
-            .ok_or_else(|| Status::internal("invalid remote {default_remote}"))?;
+        let url = url_bytes
+            .to_str()
+            .map_err(|e| Status::internal(format!("decode url string error: {}", e)))?;
+        let (owner_name, repo_name) = get_owner_and_repo(url)
+            .ok_or_else(|| Status::internal(format!("invalid remote url {url}")))?;
         Ok(RepositoryKey {
             owner_name,
             repo_name,

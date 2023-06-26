@@ -34,3 +34,4 @@ lazy_static = "1.4.0"
 metrics-exporter-prometheus = "0.12.1"
 metrics = "0.21.0"
 xxhash-rust = {version="0.8.5", features = ["xxh32"]}
+gix-config = "0.24.0"
