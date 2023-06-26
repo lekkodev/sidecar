@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use log::{debug, warn, info};
+use log::{debug, warn};
 use prost::Message;
 use sha1::Digest;
 use tonic::Status;
@@ -204,36 +204,24 @@ impl RepoFS {
             Ok(r) => r,
             Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
         };
-        let path = std::path::Path::new(&self.repo_path);
-        info!("repo_key. repo_path: {:}", path.display());
-        info!("repo_key. repo_path exists: {}", path.exists());
-        let gitpath = path.join(std::path::Path::new(".git"));
-        info!("repo_key. gitpath: {:}", gitpath.display());
-        info!("repo_key. gitpath exists: {}", gitpath.exists());
-        info!("repo_key. remote names: {:?}", repo.remote_names());
-        info!("repo_key. config snapshot: {:?}", repo.config_snapshot());
-        let default_remote_name = match repo.remote_default_name(git_repository::remote::Direction::Fetch).ok_or_else(|| Status::internal("no default remote name found")) {
-            Ok(z) => z,
-            Err(e) => return Err(Status::internal(format!("error finding default remote name: {:}", e))),
-        };
-        info!("repo_key. remote default name: {}", default_remote_name);
-        let default_remote: String = match repo
-            .find_default_remote(git_repository::remote::Direction::Fetch)
-        {
-            Some(Ok(branch)) => branch
+        let default_remote_url: String = match repo.find_remote("origin") {
+            Ok(branch) => branch
                 .url(git_repository::remote::Direction::Fetch)
                 .map(|url| {
                     url.path
                         .clone()
                         .try_into()
-                        .map_err(|e| Status::internal(format!("error fetching remote {e}")))
+                        .map_err(|e| Status::internal(format!("error utf decoding remote url {e}")))
                 })
-                .ok_or_else(|| Status::internal("no remote url found for repo"))??,
-            Some(Err(err)) => return Err(Status::internal(format!("error fetching remote {err}"))),
-            None => return Err(Status::internal("no remote found for repo")),
+                .ok_or_else(|| Status::internal("no remote url found for origin"))??,
+            Err(err) => {
+                return Err(Status::internal(format!(
+                    "error fetching remote origin {err}"
+                )))
+            }
         };
-        let (owner_name, repo_name) = get_owner_and_repo(&default_remote)
-            .ok_or_else(|| Status::internal(format!("invalid remote {default_remote}")))?;
+        let (owner_name, repo_name) = get_owner_and_repo(&default_remote_url)
+            .ok_or_else(|| Status::internal(format!("invalid remote url {default_remote_url}")))?;
         Ok(RepositoryKey {
             owner_name,
             repo_name,
