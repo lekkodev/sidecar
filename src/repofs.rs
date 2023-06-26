@@ -1,5 +1,5 @@
 use std::{
-    fs::{read, read_dir, read_to_string},
+    fs::{self, read, read_dir, read_to_string},
     path::Path,
 };
 
@@ -211,12 +211,14 @@ impl RepoFS {
         info!("repo_key. gitpath: {:}", gitpath.display());
         info!("repo_key. gitpath exists: {}", gitpath.exists());
         info!("repo_key. remote names: {:?}", repo.remote_names());
-        info!("repo_key. config snapshot: {:?}", repo.config_snapshot());
-        let default_remote_name = match repo.remote_default_name(git_repository::remote::Direction::Fetch).ok_or_else(|| Status::internal("no default remote name found")) {
-            Ok(z) => z,
-            Err(e) => return Err(Status::internal(format!("error finding default remote name: {:}", e))),
-        };
-        info!("repo_key. remote default name: {}", default_remote_name);
+        info!("repo_key. config snapshot: \n{:?}", repo.config_snapshot());
+        let config_file_path = gitpath.join(std::path::Path::new("config"));
+        let config_file_contents = fs::read_to_string(config_file_path.clone())?;
+        info!("config file contents:\n{}", config_file_contents);
+        let x = git_config::File::from_path_no_includes(config_file_path, git_config::Source::Local).map_err(|e| Status::internal(format!("invalid config file at path: {}", e)))?;
+        let section = x.section_by_key("remote.origin").map_err(|e| Status::internal(format!("cannot find section remote {}", e)))?;
+        let url_cow = section.value("url").ok_or_else(|| Status::internal(format!("cannot find url in remote section")))?;
+        info!("cow url: {:?}", url_cow.as_ref());
         let default_remote_url: String = match repo.find_remote("origin") {
             Ok(branch) => branch
                 .url(git_repository::remote::Direction::Fetch)

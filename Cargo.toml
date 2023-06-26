@@ -33,6 +33,7 @@ regex = "1.8.1"
 lazy_static = "1.4.0"
 metrics-exporter-prometheus = "0.12.1"
 metrics = "0.21.0"
+git-config = "0.16.2"
 
 [dependencies.xxhash-rust]
 version = "0.8.5"
