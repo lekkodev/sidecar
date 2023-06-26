@@ -57,9 +57,8 @@ impl Service {
             )));
         }
         let eval_context = EvalContext {
-            owner_name: feature.rk.owner_name.to_owned(),
-            repo_name: feature.rk.repo_name.to_owned(),
             namespace: feature.namespace.to_owned(),
+            feature_name: feature_data.feature.key.to_owned(),
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         if let Some(m) = self.metrics.as_ref() {
@@ -87,7 +86,6 @@ impl ConfigurationService for Service {
                 requested_rk, self.repo_key
             )));
         }
-
         Ok(Response::new(RegisterResponse::default()))
     }
 

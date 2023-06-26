@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use git_repository::bstr::ByteSlice;
+use gix::bstr::ByteSlice;
 use log::{debug, warn};
 use prost::Message;
 use sha1::Digest;
@@ -91,7 +91,10 @@ impl RepoFS {
         let lekko_root_path = format!("{:}/lekko.root.yaml", self.contents_path.to_owned());
         let yaml = match read_to_string(&lekko_root_path) {
             Ok(contents) => match YamlLoader::load_from_str(contents.as_ref()) {
-                Ok(docs) => docs[0].to_owned(),
+                Ok(docs) => docs
+                    .get(0)
+                    .ok_or_else(|| Status::internal("invalid lekko.root.yaml"))?
+                    .to_owned(),
                 Err(e) => {
                     return Err(Status::internal(format!(
                         "failed to parse lekko yaml: {e:?}",
@@ -202,7 +205,7 @@ impl RepoFS {
     // repository.
     pub fn repo_key(&self) -> Result<RepositoryKey, Status> {
         let gitpath = Path::new(&self.repo_path).join(Path::new(".git"));
-        let config_file = git_config::File::from_git_dir(gitpath)
+        let config_file = gix_config::File::from_git_dir(gitpath)
             .map_err(|e| Status::internal(format!("invalid config file at path: {}", e)))?;
         let origin = config_file
             .section_by_key("remote.origin")
@@ -227,7 +230,7 @@ impl RepoFS {
 
     // Determines the git commit sha of HEAD.
     pub fn git_commit_sha(&self) -> Result<String, Status> {
-        let repo = match git_repository::open(Path::new(&self.repo_path)) {
+        let repo = match gix::open(Path::new(&self.repo_path)) {
             Ok(r) => r,
             Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
         };
