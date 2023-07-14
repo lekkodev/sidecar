@@ -159,9 +159,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 panic!("repo-url needs to be set in default mode")
             }
             let api_key = args
-            .api_key
-            .as_ref()
-            .expect("no api key provided in default mode");
+                    .api_key
+                    .as_ref()
+                    .expect("no api key provided in default mode");
             let (owner, repo) = args.repo_url.split_once('/').unwrap_or_else(|| {
                 panic!(
                     "invalid repo-url: {}, please use the format owner/repo i.e. lekkodev/example",
