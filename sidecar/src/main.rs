@@ -1,6 +1,8 @@
 use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
 use metrics::counter;
+use sidecar::gen::cli::lekko::backend::v1beta1::GetRepositoryContentsRequest;
+use sidecar::gen::cli::lekko::backend::v1beta1::RepositoryKey;
 use sidecar::gen::cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 use sidecar::gen::cli::lekko::backend::v1beta1::RegisterClientRequest;
 use sidecar::gen::sdk::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
@@ -64,10 +66,15 @@ struct Args {
     /// If this duration is too short, Lekko may apply rate limits.
     poll_interval: Duration,
 
-    #[arg(short, long)]
+    #[arg(short, long, default_value="")]
     /// Absolute path to the directory on disk that contains the .git folder.
-    /// This is required to ensure availability either in static or default mode.
+    /// This is required for static mode.
     repo_path: String,
+
+    #[arg(short, long, default_value="")]
+    /// The url for the repo in "owner_name/repo_name" format, such as:
+    /// lekkodev/example, representing github.com/lekkodev/example. This is required for default backend.
+    repo_url: String,
 }
 
 impl Debug for Args {
@@ -132,27 +139,62 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
 
-    let bootstrap_data = RepoFS::new(args.repo_path.clone()).expect("invalid repository");
-    let initial_sha = bootstrap_data
-        .git_commit_sha()
-        .expect("invalid repository sha");
-    let repo_key = bootstrap_data
-        .repo_key()
-        .expect("invalid remote information in repo path");
-
+    let res;
+    let repo_key;
+    
     let conn_creds = match &args.mode {
-        Mode::Static => None,
+        Mode::Static => {
+            if args.repo_path.is_empty() {
+                panic!("repo-path needs to be set in static mode")
+            }
+            let bootstrap_data = RepoFS::new(args.repo_path.clone()).expect("invalid repository");
+            repo_key = bootstrap_data
+            .repo_key()
+            .expect("invalid remote information in repo path");
+            res = bootstrap_data.load().expect("error loading info");
+            None
+        }
         Mode::Default => {
+            if args.repo_url.is_empty() {
+                panic!("repo-url needs to be set in default mode")
+            }
             let api_key = args
-                .api_key
-                .as_ref()
-                .expect("no api key provided in default mode");
+            .api_key
+            .as_ref()
+            .expect("no api key provided in default mode");
+            let (owner, repo) = args.repo_url.split_once('/').unwrap_or_else(|| {
+                panic!(
+                    "invalid repo-url: {}, please use the format owner/repo i.e. lekkodev/example",
+                    args.repo_url
+                )
+            });
+
+            repo_key = RepositoryKey {
+                owner_name: owner.to_owned(),
+                repo_name: repo.to_owned(),
+            };
+        
+            res = dist_client
+                .clone()
+                .get_repository_contents(add_api_key(
+                    GetRepositoryContentsRequest {
+                        repo_key: Some(repo_key.clone()),
+                        feature_name: "".to_string(),
+                        namespace_name: "".to_string(),
+                        session_key: "".to_string(),
+                    },
+                    api_key.clone(),
+                ))
+                .await
+                .unwrap_or_else(|e| panic!("error performing initial fetch: {:?}", e))
+                .into_inner();
+            let sha = res.commit_sha.clone();
             let conn_creds_res = dist_client
                 .clone()
                 .register_client(add_api_key(
                     RegisterClientRequest {
                         repo_key: Some(repo_key.clone()),
-                        initial_bootstrap_sha: initial_sha,
+                        initial_bootstrap_sha: sha,
                         // TODO sidecar version
                         sidecar_version: "".to_string(),
                         namespace_list: vec![],
@@ -187,7 +229,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let store = Store::new(
         dist_client.clone(),
-        bootstrap_data.load().expect("error loading info"),
+        res,
         conn_creds,
         args.poll_interval,
         args.mode.to_owned(),
