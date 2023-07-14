@@ -10,7 +10,7 @@ use sidecar::gen::sdk::lekko::client::v1beta1::configuration_service_server::Con
 use sidecar::repofs::RepoFS;
 
 use hyper::{http::Request, Body};
-use log::{error, log};
+use log::{log};
 use sidecar::logging;
 use sidecar::metrics::Metrics;
 use sidecar::metrics::RuntimeMetrics;
@@ -139,20 +139,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
 
-    let res;
-    let repo_key;
     
-    let conn_creds = match &args.mode {
+    let (conn_creds, bootstrap_data, rk) = match &args.mode {
         Mode::Static => {
             if args.repo_path.is_empty() {
                 panic!("repo-path needs to be set in static mode")
             }
             let bootstrap_data = RepoFS::new(args.repo_path.clone()).expect("invalid repository");
-            repo_key = bootstrap_data
+            let repo_key = bootstrap_data
                 .repo_key()
                 .expect("invalid remote information in repo path");
-            res = bootstrap_data.load().expect("error loading info");
-            None
+            let bootstrap = bootstrap_data.load().expect("error loading info");
+            (None, bootstrap, repo_key)
         }
         Mode::Default => {
             if args.repo_url.is_empty() {
@@ -169,12 +167,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
             });
 
-            repo_key = RepositoryKey {
+            let repo_key = RepositoryKey {
                 owner_name: owner.to_owned(),
                 repo_name: repo.to_owned(),
             };
         
-            res = dist_client
+            let bootstrap = dist_client
                 .clone()
                 .get_repository_contents(add_api_key(
                     GetRepositoryContentsRequest {
@@ -188,7 +186,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .await
                 .unwrap_or_else(|e| panic!("error performing initial fetch: {:?}", e))
                 .into_inner();
-            let sha = res.commit_sha.clone();
+            let sha = bootstrap.commit_sha.clone();
             let conn_creds_res = dist_client
                 .clone()
                 .register_client(add_api_key(
@@ -208,20 +206,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     api_key: api_key.clone(),
                 });
 
-            // This complicated match lets us handle the failure in registration.
-            // If there is a failure, and we can continue with a boostrap, we do so with an error.
             match conn_creds_res {
-                Ok(conn) => Some(conn),
+                Ok(conn) => (Some(conn), bootstrap, repo_key),
                 Err(err) => {
-                    error!("error connecting to remote: {:?}, continuing on bootstrap data to preserve uptime", err);
-                    // We still provide connection credentials to let the store try its best to recconect.
-                    // We will flood the logs with error messages, but this is on purpose, so that customers
-                    // are aware that they are operating off of stale data.
-                    Some(ConnectionCredentials {
-                        session_key: "".to_string(),
-                        api_key: api_key.clone(),
-                        repo_key: repo_key.clone(),
-                    })
+                    panic!("error connecting to remote: {:?}", err);
                 }
             }
         }
@@ -229,7 +217,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let store = Store::new(
         dist_client.clone(),
-        res,
+        bootstrap_data,
         conn_creds,
         args.poll_interval,
         args.mode.to_owned(),
@@ -243,7 +231,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .api_key
             .as_ref()
             .map(|k| Metrics::new(dist_client, k.clone())),
-        repo_key,
+        repo_key: rk,
     })
     .send_compressed(CompressionEncoding::Gzip)
     .accept_compressed(CompressionEncoding::Gzip);
