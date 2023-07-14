@@ -71,7 +71,7 @@ struct Args {
     /// This is required for static mode.
     repo_path: String,
 
-    #[arg(short, long, default_value="")]
+    #[arg(short= 'u', long, default_value="")]
     /// The url for the repo in "owner_name/repo_name" format, such as:
     /// lekkodev/example, representing github.com/lekkodev/example. This is required for default backend.
     repo_url: String,
@@ -80,7 +80,7 @@ struct Args {
 impl Debug for Args {
     // We manually implement Debug in order to avoid printing the api key.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{{ lekko_addr: {}, bind_addr: {} api_key: {:?}, metrics_bind_addr: {}, mode: {:?}, poll_interval: {:?}, repo_path: {} }}", self.lekko_addr, self.bind_addr, self.api_key.as_ref().map(|_| "Some(<lekko api key>)"), self.metrics_bind_addr, self.mode, self.poll_interval, self.repo_path))
+        f.write_fmt(format_args!("{{ lekko_addr: {}, bind_addr: {} api_key: {:?}, metrics_bind_addr: {}, mode: {:?}, poll_interval: {:?}, repo_path: {}, repo_url: {} }}", self.lekko_addr, self.bind_addr, self.api_key.as_ref().map(|_| "Some(<lekko api key>)"), self.metrics_bind_addr, self.mode, self.poll_interval, self.repo_path, self.repo_url))
     }
 }
 
