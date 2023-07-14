@@ -149,8 +149,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let bootstrap_data = RepoFS::new(args.repo_path.clone()).expect("invalid repository");
             repo_key = bootstrap_data
-            .repo_key()
-            .expect("invalid remote information in repo path");
+                .repo_key()
+                .expect("invalid remote information in repo path");
             res = bootstrap_data.load().expect("error loading info");
             None
         }
