@@ -1,6 +1,8 @@
 use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
 use metrics::counter;
+use sidecar::gen::cli::lekko::backend::v1beta1::GetRepositoryContentsRequest;
+use sidecar::gen::cli::lekko::backend::v1beta1::RepositoryKey;
 use sidecar::gen::cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 use sidecar::gen::cli::lekko::backend::v1beta1::RegisterClientRequest;
 use sidecar::gen::sdk::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
@@ -8,7 +10,7 @@ use sidecar::gen::sdk::lekko::client::v1beta1::configuration_service_server::Con
 use sidecar::repofs::RepoFS;
 
 use hyper::{http::Request, Body};
-use log::{error, log};
+use log::{log};
 use sidecar::logging;
 use sidecar::metrics::Metrics;
 use sidecar::metrics::RuntimeMetrics;
@@ -64,16 +66,21 @@ struct Args {
     /// If this duration is too short, Lekko may apply rate limits.
     poll_interval: Duration,
 
-    #[arg(short, long)]
+    #[arg(short, long, default_value="")]
     /// Absolute path to the directory on disk that contains the .git folder.
-    /// This is required to ensure availability either in static or default mode.
+    /// This is required for static mode.
     repo_path: String,
+
+    #[arg(short= 'u', long, default_value="")]
+    /// The url for the repo in "owner_name/repo_name" format, such as:
+    /// lekkodev/example, representing github.com/lekkodev/example. This is required for default backend.
+    repo_url: String,
 }
 
 impl Debug for Args {
     // We manually implement Debug in order to avoid printing the api key.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{{ lekko_addr: {}, bind_addr: {} api_key: {:?}, metrics_bind_addr: {}, mode: {:?}, poll_interval: {:?}, repo_path: {} }}", self.lekko_addr, self.bind_addr, self.api_key.as_ref().map(|_| "Some(<lekko api key>)"), self.metrics_bind_addr, self.mode, self.poll_interval, self.repo_path))
+        f.write_fmt(format_args!("{{ lekko_addr: {}, bind_addr: {} api_key: {:?}, metrics_bind_addr: {}, mode: {:?}, poll_interval: {:?}, repo_path: {}, repo_url: {} }}", self.lekko_addr, self.bind_addr, self.api_key.as_ref().map(|_| "Some(<lekko api key>)"), self.metrics_bind_addr, self.mode, self.poll_interval, self.repo_path, self.repo_url))
     }
 }
 
@@ -132,27 +139,60 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
 
-    let bootstrap_data = RepoFS::new(args.repo_path.clone()).expect("invalid repository");
-    let initial_sha = bootstrap_data
-        .git_commit_sha()
-        .expect("invalid repository sha");
-    let repo_key = bootstrap_data
-        .repo_key()
-        .expect("invalid remote information in repo path");
-
-    let conn_creds = match &args.mode {
-        Mode::Static => None,
+    
+    let (conn_creds, bootstrap_data, rk) = match &args.mode {
+        Mode::Static => {
+            if args.repo_path.is_empty() {
+                panic!("repo-path needs to be set in static mode")
+            }
+            let bootstrap_data = RepoFS::new(args.repo_path.clone()).expect("invalid repository");
+            let repo_key = bootstrap_data
+                .repo_key()
+                .expect("invalid remote information in repo path");
+            let bootstrap = bootstrap_data.load().expect("error loading info");
+            (None, bootstrap, repo_key)
+        }
         Mode::Default => {
+            if args.repo_url.is_empty() {
+                panic!("repo-url needs to be set in default mode")
+            }
             let api_key = args
-                .api_key
-                .as_ref()
-                .expect("no api key provided in default mode");
+                    .api_key
+                    .as_ref()
+                    .expect("no api key provided in default mode");
+            let (owner, repo) = args.repo_url.split_once('/').unwrap_or_else(|| {
+                panic!(
+                    "invalid repo-url: {}, please use the format owner/repo i.e. lekkodev/example",
+                    args.repo_url
+                )
+            });
+
+            let repo_key = RepositoryKey {
+                owner_name: owner.to_owned(),
+                repo_name: repo.to_owned(),
+            };
+        
+            let bootstrap = dist_client
+                .clone()
+                .get_repository_contents(add_api_key(
+                    GetRepositoryContentsRequest {
+                        repo_key: Some(repo_key.clone()),
+                        feature_name: "".to_string(),
+                        namespace_name: "".to_string(),
+                        session_key: "".to_string(),
+                    },
+                    api_key.clone(),
+                ))
+                .await
+                .unwrap_or_else(|e| panic!("error performing initial fetch: {:?}", e))
+                .into_inner();
+            let sha = bootstrap.commit_sha.clone();
             let conn_creds_res = dist_client
                 .clone()
                 .register_client(add_api_key(
                     RegisterClientRequest {
                         repo_key: Some(repo_key.clone()),
-                        initial_bootstrap_sha: initial_sha,
+                        initial_bootstrap_sha: sha,
                         // TODO sidecar version
                         sidecar_version: "".to_string(),
                         namespace_list: vec![],
@@ -166,20 +206,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     api_key: api_key.clone(),
                 });
 
-            // This complicated match lets us handle the failure in registration.
-            // If there is a failure, and we can continue with a boostrap, we do so with an error.
             match conn_creds_res {
-                Ok(conn) => Some(conn),
+                Ok(conn) => (Some(conn), bootstrap, repo_key),
                 Err(err) => {
-                    error!("error connecting to remote: {:?}, continuing on bootstrap data to preserve uptime", err);
-                    // We still provide connection credentials to let the store try its best to recconect.
-                    // We will flood the logs with error messages, but this is on purpose, so that customers
-                    // are aware that they are operating off of stale data.
-                    Some(ConnectionCredentials {
-                        session_key: "".to_string(),
-                        api_key: api_key.clone(),
-                        repo_key: repo_key.clone(),
-                    })
+                    panic!("error connecting to remote: {:?}", err);
                 }
             }
         }
@@ -187,7 +217,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let store = Store::new(
         dist_client.clone(),
-        bootstrap_data.load().expect("error loading info"),
+        bootstrap_data,
         conn_creds,
         args.poll_interval,
         args.mode.to_owned(),
@@ -201,7 +231,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .api_key
             .as_ref()
             .map(|k| Metrics::new(dist_client, k.clone())),
-        repo_key,
+        repo_key: rk,
     })
     .send_compressed(CompressionEncoding::Gzip)
     .accept_compressed(CompressionEncoding::Gzip);
