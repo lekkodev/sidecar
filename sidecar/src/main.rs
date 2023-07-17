@@ -223,7 +223,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.mode.to_owned(),
         args.repo_path,
     );
-    let service = ConfigurationServiceServer::new(Service {
+    let service: ConfigurationServiceServer<Service> = ConfigurationServiceServer::new(Service {
         config_client,
         store,
         mode: args.mode,
@@ -235,6 +235,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .send_compressed(CompressionEncoding::Gzip)
     .accept_compressed(CompressionEncoding::Gzip);
+
+    let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<ConfigurationServiceServer<Service>>()
+        .await;
 
     Server::builder()
         .layer(
@@ -263,6 +268,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
         )
         .add_service(service)
+        .add_service(health_service)
         .serve_with_shutdown(addr, async move {
             tokio::signal::unix::signal(SignalKind::terminate())
                 .unwrap()
