@@ -8,26 +8,35 @@ COPY sidecar/Cargo.toml /workspace/sidecar/Cargo.toml
 COPY lekkod/Cargo.toml /workspace/lekkod/Cargo.toml
 COPY Cargo.toml Cargo.lock /workspace/
 
+COPY grpc_health_probe-linux-amd64 /workspace/sidecar/grpc_health_probe-linux-amd64
+COPY grpc_health_probe-linux-arm64 /workspace/sidecar/grpc_health_probe-linux-arm64
+
 RUN mkdir sidecar/src && touch sidecar/src/lib.rs && mkdir lekkod/src && touch lekkod/src/lib.rs
 
 RUN touch /rust_target.txt /apt_deps.txt /cc.txt /rust_flags.txt /ar.txt
 
 ARG TARGETPLATFORM
 RUN case "$TARGETPLATFORM" in \
-	"linux/amd64") echo x86_64-unknown-linux-gnu > /rust_target.txt && \
-	echo gcc-x86-64-linux-gnu >> /apt_deps.txt && \
-	echo x86_64-linux-gnu-gcc >> /cc.txt && \
-	echo '-C linker=x86_64-linux-gnu-gcc' >> /rust_flags.txt && \
-	echo x86_64-linux-gnu-ar >> /ar.txt ;; \
-	"linux/arm64") echo aarch64-unknown-linux-gnu > /rust_target.txt ;; \
-	*) echo "$TARGETPLATFORM" && exit 1 ;; \
+	"linux/amd64") \
+		echo x86_64-unknown-linux-gnu > /rust_target.txt && \
+		echo gcc-x86-64-linux-gnu >> /apt_deps.txt && \
+		echo x86_64-linux-gnu-gcc >> /cc.txt && \
+		echo '-C linker=x86_64-linux-gnu-gcc' >> /rust_flags.txt && \
+		echo x86_64-linux-gnu-ar >> /ar.txt; \
+		mv /workspace/sidecar/grpc_health_probe-linux-amd64 /workspace/sidecar/grpc-health-probe; \
+	;; \
+	"linux/arm64") \ 
+		echo aarch64-unknown-linux-gnu > /rust_target.txt; \
+		mv /workspace/sidecar/grpc_health_probe-linux-arm64 /workspace/sidecar/grpc-health-probe; \
+	;; \
+	*) \
+		echo "$TARGETPLATFORM" && exit 1 \
+	;; \
 	esac
 
 RUN apt-get update && (cat /apt_deps.txt | xargs apt-get install -y)
 
 RUN rustup target add $(cat /rust_target.txt)
-
-RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build -p sidecar --release --target $(cat /rust_target.txt)
 
 COPY sidecar/src /workspace/sidecar/src
 
@@ -42,5 +51,6 @@ RUN cp target/$(cat /rust_target.txt)/release/sidecar sidecar-bin
 FROM --platform=${TARGETPLATFORM} debian:bullseye-slim
 
 COPY --from=builder /workspace/sidecar-bin /usr/local/bin/sidecar
+COPY --from=builder /workspace/sidecar/grpc-health-probe /bin/grpc-health-probe
 
 ENTRYPOINT ["/usr/local/bin/sidecar"]
