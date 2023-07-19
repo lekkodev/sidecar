@@ -8,9 +8,6 @@ COPY sidecar/Cargo.toml /workspace/sidecar/Cargo.toml
 COPY lekkod/Cargo.toml /workspace/lekkod/Cargo.toml
 COPY Cargo.toml Cargo.lock /workspace/
 
-COPY grpc_health_probe-linux-amd64 /workspace/sidecar/grpc_health_probe-linux-amd64
-COPY grpc_health_probe-linux-arm64 /workspace/sidecar/grpc_health_probe-linux-arm64
-
 RUN mkdir sidecar/src && touch sidecar/src/lib.rs && mkdir lekkod/src && touch lekkod/src/lib.rs
 
 RUN touch /rust_target.txt /apt_deps.txt /cc.txt /rust_flags.txt /ar.txt
@@ -23,16 +20,17 @@ RUN case "$TARGETPLATFORM" in \
 		echo x86_64-linux-gnu-gcc >> /cc.txt && \
 		echo '-C linker=x86_64-linux-gnu-gcc' >> /rust_flags.txt && \
 		echo x86_64-linux-gnu-ar >> /ar.txt; \
-		mv /workspace/sidecar/grpc_health_probe-linux-amd64 /workspace/sidecar/grpc-health-probe; \
 	;; \
 	"linux/arm64") \ 
 		echo aarch64-unknown-linux-gnu > /rust_target.txt; \
-		mv /workspace/sidecar/grpc_health_probe-linux-arm64 /workspace/sidecar/grpc-health-probe; \
 	;; \
 	*) \
 		echo "$TARGETPLATFORM" && exit 1 \
 	;; \
 	esac
+
+RUN GRPC_HEALTH_PROBE_VERSION=v0.4.19 && \
+	wget -qO /bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-$(echo $TARGETPLATFORM | tr / -)
 
 RUN apt-get update && (cat /apt_deps.txt | xargs apt-get install -y)
 
@@ -51,6 +49,6 @@ RUN cp target/$(cat /rust_target.txt)/release/sidecar sidecar-bin
 FROM --platform=${TARGETPLATFORM} debian:bullseye-slim
 
 COPY --from=builder /workspace/sidecar-bin /usr/local/bin/sidecar
-COPY --from=builder /workspace/sidecar/grpc-health-probe /bin/grpc-health-probe
+COPY --from=builder /bin/grpc_health_probe /bin/grpc-health-probe
 
 ENTRYPOINT ["/usr/local/bin/sidecar"]
