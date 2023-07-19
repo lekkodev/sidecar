@@ -30,7 +30,8 @@ RUN case "$TARGETPLATFORM" in \
 	esac
 
 RUN GRPC_HEALTH_PROBE_VERSION=v0.4.19 && \
-	wget -qO /bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-$(echo $TARGETPLATFORM | tr / -)
+	wget -qO /bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-$(echo $TARGETPLATFORM | tr / -); \
+        chmod 775 /bin/grpc_health_probe;
 
 RUN apt-get update && (cat /apt_deps.txt | xargs apt-get install -y)
 
