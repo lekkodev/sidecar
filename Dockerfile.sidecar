@@ -36,6 +36,7 @@ RUN apt-get update && (cat /apt_deps.txt | xargs apt-get install -y)
 
 RUN rustup target add $(cat /rust_target.txt)
 
+RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build -p sidecar --release --target $(cat /rust_target.txt)
 COPY sidecar/src /workspace/sidecar/src
 
 # prevents a cached lib.rs compile
