@@ -1,16 +1,16 @@
 use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
 use metrics::counter;
-use sidecar::gen::cli::lekko::backend::v1beta1::GetRepositoryContentsRequest;
-use sidecar::gen::cli::lekko::backend::v1beta1::RepositoryKey;
 use sidecar::gen::cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
+use sidecar::gen::cli::lekko::backend::v1beta1::GetRepositoryContentsRequest;
 use sidecar::gen::cli::lekko::backend::v1beta1::RegisterClientRequest;
+use sidecar::gen::cli::lekko::backend::v1beta1::RepositoryKey;
 use sidecar::gen::sdk::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
 use sidecar::gen::sdk::lekko::client::v1beta1::configuration_service_server::ConfigurationServiceServer;
 use sidecar::repofs::RepoFS;
 
 use hyper::{http::Request, Body};
-use log::{log};
+use log::log;
 use sidecar::logging;
 use sidecar::metrics::Metrics;
 use sidecar::metrics::RuntimeMetrics;
@@ -66,12 +66,12 @@ struct Args {
     /// If this duration is too short, Lekko may apply rate limits.
     poll_interval: Duration,
 
-    #[arg(short, long, default_value="")]
+    #[arg(short, long, default_value = "")]
     /// Absolute path to the directory on disk that contains the .git folder.
     /// This is required for static mode.
     repo_path: String,
 
-    #[arg(short= 'u', long, default_value="")]
+    #[arg(short = 'u', long, default_value = "")]
     /// The url for the repo in "owner_name/repo_name" format, such as:
     /// lekkodev/example, representing github.com/lekkodev/example. This is required for default backend.
     repo_url: String,
@@ -91,6 +91,16 @@ fn parse_duration(arg: &str) -> Result<std::time::Duration, humantime::DurationE
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     logging::init();
+
+    const VERSION: &str = env!("SIDECAR_VERSION");
+    const GIT_COMMIT: &str = env!("SIDECAR_GIT_COMMIT");
+
+    log!(
+        log::max_level().to_level().unwrap_or(log::Level::Info),
+        "sidecar version '{}', commit '{}'",
+        VERSION,
+        GIT_COMMIT
+    );
 
     let args = Args::parse();
     let addr = match args.bind_addr.parse::<SocketAddr>() {
@@ -139,7 +149,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
 
-    
     let (conn_creds, bootstrap_data, rk) = match &args.mode {
         Mode::Static => {
             if args.repo_path.is_empty() {
@@ -157,9 +166,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 panic!("repo-url needs to be set in default mode")
             }
             let api_key = args
-                    .api_key
-                    .as_ref()
-                    .expect("no api key provided in default mode");
+                .api_key
+                .as_ref()
+                .expect("no api key provided in default mode");
             let (owner, repo) = args.repo_url.split_once('/').unwrap_or_else(|| {
                 panic!(
                     "invalid repo-url: {}, please use the format owner/repo i.e. lekkodev/example",
@@ -171,7 +180,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 owner_name: owner.to_owned(),
                 repo_name: repo.to_owned(),
             };
-        
+
             let bootstrap = dist_client
                 .clone()
                 .get_repository_contents(add_api_key(

@@ -12,6 +12,9 @@ RUN mkdir sidecar/src && touch sidecar/src/lib.rs && mkdir lekkod/src && touch l
 
 RUN touch /rust_target.txt /apt_deps.txt /cc.txt /rust_flags.txt /ar.txt
 
+ARG SIDECAR_VERSION=development
+ARG SIDECAR_GIT_COMMIT
+
 ARG TARGETPLATFORM
 RUN case "$TARGETPLATFORM" in \
 	"linux/amd64") \
@@ -37,14 +40,14 @@ RUN apt-get update && (cat /apt_deps.txt | xargs apt-get install -y)
 
 RUN rustup target add $(cat /rust_target.txt)
 
-RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build -p sidecar --release --target $(cat /rust_target.txt)
+RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) SIDECAR_VERSION=$SIDECAR_VERSION SIDECAR_GIT_COMMIT=$SIDECAR_GIT_COMMIT cargo build -p sidecar --release --target $(cat /rust_target.txt)
 COPY sidecar/src /workspace/sidecar/src
 
 # prevents a cached lib.rs compile
 RUN touch /workspace/sidecar/src/lib.rs
 
 # This is the actual application build.
-RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) cargo build -p sidecar --release --target $(cat /rust_target.txt)
+RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) SIDECAR_VERSION=$SIDECAR_VERSION SIDECAR_GIT_COMMIT=$SIDECAR_GIT_COMMIT cargo build -p sidecar --release --target $(cat /rust_target.txt)
 
 RUN cp target/$(cat /rust_target.txt)/release/sidecar sidecar-bin
 
