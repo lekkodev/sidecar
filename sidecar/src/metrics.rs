@@ -40,13 +40,13 @@ pub struct TrackFlagEvaluationEvent {
     event: FlagEvaluationEvent,
 }
 
-// TODO: Send batched flag evaluation metrics back to the backend after local evaluation.
 impl Metrics {
     pub fn new(
         dist_client: DistributionServiceClient<
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
         api_key: MetadataValue<Ascii>,
+        session_key: Option<String>,
     ) -> Self {
         // create a sync channel to send and receive metrics.
         // approximate size of each event is 1KB. this buffer is sized to not exceed 1MB total memory.
@@ -54,7 +54,7 @@ impl Metrics {
         let (tx, rx) = channel(1024);
         // spawn a new thread that receives metrics and sends them over rpc
         spawn(async {
-            Metrics::worker(rx, dist_client, api_key).await;
+            Metrics::worker(rx, dist_client, api_key, session_key).await;
         });
         Self { tx }
     }
@@ -98,6 +98,7 @@ impl Metrics {
             hyper::Client<HttpsConnector<HttpConnector>, BoxBody>,
         >,
         api_key: MetadataValue<Ascii>,
+        session_key: Option<String>,
     ) {
         // Pool of futures allows this thread to not block on I/O, sending out multiple
         // metrics at once while also receiving from the channel.
@@ -112,7 +113,7 @@ impl Metrics {
             select! {
                 _ = interval.tick() => {
                     if !buffer.is_empty() {
-                        futures.push(Metrics::send_flag_evaluations(dist_client.clone(), buffer.drain(..).collect(), api_key.clone()));
+                        futures.push(Metrics::send_flag_evaluations(dist_client.clone(), buffer.drain(..).collect(), api_key.clone(), session_key.clone()));
                     }
                 },
                 // recv returns None if the channel is closed or the sender goes out of scope. We
@@ -120,7 +121,7 @@ impl Metrics {
                 Some(event) = rx.recv() => {
                     buffer.push(event);
                     if buffer.len() >= 1024 {
-                        futures.push(Metrics::send_flag_evaluations(dist_client.clone(), buffer.drain(..).collect(), api_key.clone()));
+                        futures.push(Metrics::send_flag_evaluations(dist_client.clone(), buffer.drain(..).collect(), api_key.clone(), session_key.clone()));
                     }
                 },
                 Some(result) = futures.next() => {
@@ -139,12 +140,12 @@ impl Metrics {
         >,
         events: Vec<TrackFlagEvaluationEvent>,
         api_key: MetadataValue<Ascii>,
+        session_key: Option<String>,
     ) -> Result<(), tonic::Status> {
         debug!("sending {} flag evaluation metrics to lekko", events.len());
         let mut req = Request::new(SendFlagEvaluationMetricsRequest {
             events: events.into_iter().map(|event| event.event).collect(),
-            // TODO: worry about sessions later.
-            session_key: "".to_string(),
+            session_key: session_key.unwrap_or_default(),
         });
         req.metadata_mut().append(APIKEY, api_key);
         dist_client.send_flag_evaluation_metrics(req).await?;
