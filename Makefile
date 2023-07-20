@@ -84,7 +84,7 @@ dockerpush$(1): dockerbuilddeps$(1)
 	$(eval TAG := $(DATE)_$(GIT_HASH))
 	@read -p "Do you want to create and push a git tag in this format: $(TAG) [Press any key to continue]: "
 	git tag -f $(TAG)
-	docker build -t $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG) -f Dockerfile.$(1) --platform=linux/amd64 .
+	docker build -t $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG) --build-arg SIDECAR_VERSION=$(TAG) --build-arg SIDECAR_GIT_COMMIT=$(GIT_HASH) -f Dockerfile.$(1) --platform=linux/amd64 .
 
 	@read -p "Do you want to push this image: $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG) [Press any key to continue]: "
 	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(DOCKER_REMOTE)
