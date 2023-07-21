@@ -70,7 +70,9 @@ dockerbuilddeps$(1)::
 
 .PHONY: dockerbuildlocal$(1)
 dockerbuildlocal$(1): dockerbuilddeps$(1)
-	docker build -t $(DOCKER_ORG)/$(1):latest -f Dockerfile.$(1) .
+	$(eval TAG := $(shell git describe --abbrev=0 --tags))
+	$(eval GIT_HASH := $(shell git rev-parse HEAD))
+	docker build -t $(DOCKER_ORG)/$(1):latest --build-arg SIDECAR_VERSION=$(TAG) --build-arg SIDECAR_GIT_COMMIT=$(GIT_HASH) -f Dockerfile.$(1) .
 
 .PHONY: dockerbuild$(1)
 dockerbuild$(1): dockerbuilddeps$(1)
