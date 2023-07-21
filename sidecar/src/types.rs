@@ -74,11 +74,54 @@ pub fn add_api_key<T: Message>(m: T, api_key: MetadataValue<Ascii>) -> tonic::Re
 pub fn get_owner_and_repo(path: &str) -> Option<(String, String)> {
     let parts: Vec<&str> = path.trim_end_matches(".git").split('/').collect();
     if parts.len() >= 2 {
-        Some((
-            parts[parts.len() - 2].to_owned(),
-            parts[parts.len() - 1].to_owned(),
-        ))
+        let repo_name = parts[parts.len() - 1].to_owned();
+        let sub_parts: Vec<&str> = parts[parts.len() - 2].split(':').collect();
+        Some((sub_parts[sub_parts.len() - 1].to_owned(), repo_name))
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::types::get_owner_and_repo;
+
+    #[test]
+    fn test_get_owner_and_repo_http() {
+        match get_owner_and_repo("https://github.com/lekkodev/example") {
+            Some(tuple) => assert_eq!(tuple, (String::from("lekkodev"), String::from("example"))),
+            None => panic!("owner and repo should exist"),
+        }
+
+        match get_owner_and_repo("https://github.com/lekkodev/example.git") {
+            Some(tuple) => assert_eq!(tuple, (String::from("lekkodev"), String::from("example"))),
+            None => panic!("owner and repo should exist with .git suffix"),
+        }
+    }
+
+    #[test]
+    fn test_get_owner_and_repo_ssh() {
+        match get_owner_and_repo("git@github.com:lekkodev/example.git") {
+            Some(tuple) => assert_eq!(tuple, (String::from("lekkodev"), String::from("example"))),
+            None => panic!("owner and repo should exist"),
+        }
+
+        match get_owner_and_repo("git@github.com:lekkodev/example") {
+            Some(tuple) => assert_eq!(tuple, (String::from("lekkodev"), String::from("example"))),
+            None => panic!("owner and repo should exist without .git suffix"),
+        }
+    }
+
+    #[test]
+    fn test_get_owner_and_repo_invalid() {
+        match get_owner_and_repo("") {
+            None => (),
+            _ => panic!("empty string is invalid"),
+        }
+
+        match get_owner_and_repo("lekkodev-example") {
+            None => (),
+            _ => panic!("invalid url"),
+        }
     }
 }
