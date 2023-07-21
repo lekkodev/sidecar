@@ -149,7 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
 
-    let (conn_creds, bootstrap_data, rk) = match &args.mode {
+    let (bootstrap_data, rk) = match &args.mode {
         Mode::Static => {
             if args.repo_path.is_empty() {
                 panic!("repo-path needs to be set in static mode")
@@ -159,7 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .repo_key()
                 .expect("invalid remote information in repo path");
             let bootstrap = bootstrap_data.load().expect("error loading info");
-            (None, bootstrap, repo_key)
+            (bootstrap, repo_key)
         }
         Mode::Default => {
             if args.repo_url.is_empty() {
@@ -195,33 +195,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .await
                 .unwrap_or_else(|e| panic!("error performing initial fetch: {:?}", e))
                 .into_inner();
-            let sha = bootstrap.commit_sha.clone();
-            let conn_creds_res = dist_client
+            (bootstrap, repo_key)
+        }
+    };
+
+    let api_key = args.api_key.as_ref();
+
+    let conn_creds = match api_key {
+        Some(key) => {
+            let res = dist_client
                 .clone()
                 .register_client(add_api_key(
                     RegisterClientRequest {
-                        repo_key: Some(repo_key.clone()),
-                        initial_bootstrap_sha: sha,
-                        // TODO sidecar version
-                        sidecar_version: "".to_string(),
+                        repo_key: Some(rk.clone()),
+                        initial_bootstrap_sha: bootstrap_data.commit_sha.clone(),
+                        sidecar_version: format!("{VERSION}_{GIT_COMMIT}"),
                         namespace_list: vec![],
                     },
-                    api_key.clone(),
+                    key.clone(),
                 ))
                 .await
                 .map(|resp| ConnectionCredentials {
                     session_key: resp.into_inner().session_key,
-                    repo_key: repo_key.clone(),
-                    api_key: api_key.clone(),
+                    repo_key: rk.clone(),
+                    api_key: key.clone(),
                 });
-
-            match conn_creds_res {
-                Ok(conn) => (Some(conn), bootstrap, repo_key),
-                Err(err) => {
+            match (res, &args.mode) {
+                (Ok(conn), _) => Some(conn),
+                // don't panic in static mode, sidecar can work without remote
+                (Err(_), Mode::Static) => Some(ConnectionCredentials{
+                            session_key: "".to_string(),
+                            repo_key: rk.clone(),
+                            api_key: key.clone(),
+                        }),
+                (Err(err), _) => {
                     panic!("error connecting to remote: {:?}", err);
                 }
             }
         }
+        None => None,
     };
 
     let store = Store::new(
@@ -237,10 +249,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config_client,
         store,
         mode: args.mode,
-        metrics: args
-            .api_key
-            .as_ref()
-            .map(|k| Metrics::new(dist_client, k.clone(), session_key)),
+        metrics: api_key.map(|k| Metrics::new(dist_client, k.clone(), session_key)),
         repo_key: rk,
     })
     .send_compressed(CompressionEncoding::Gzip)
