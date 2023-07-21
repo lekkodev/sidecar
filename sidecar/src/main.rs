@@ -227,11 +227,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = Store::new(
         dist_client.clone(),
         bootstrap_data,
-        conn_creds,
+        conn_creds.clone(),
         args.poll_interval,
         args.mode.to_owned(),
         args.repo_path,
     );
+    let session_key = conn_creds.map(|c| c.session_key);
     let service: ConfigurationServiceServer<Service> = ConfigurationServiceServer::new(Service {
         config_client,
         store,
@@ -239,7 +240,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         metrics: args
             .api_key
             .as_ref()
-            .map(|k| Metrics::new(dist_client, k.clone())),
+            .map(|k| Metrics::new(dist_client, k.clone(), session_key)),
         repo_key: rk,
     })
     .send_compressed(CompressionEncoding::Gzip)
