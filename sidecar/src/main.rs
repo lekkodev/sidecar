@@ -201,7 +201,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let api_key = args.api_key.as_ref();
 
-    let conn_creds_res = match api_key {
+    let conn_creds = match api_key {
         Some(key) => {
             let res = dist_client
                 .clone()
@@ -220,17 +220,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     repo_key: rk.clone(),
                     api_key: key.clone(),
                 });
-            Some(res)
+            match res {
+                Ok(conn) => Some(conn),
+                Err(err) =>{
+                    panic!("error connecting to remote: {:?}", err);
+                }
+            }
         }
         None => None,
-    };
-
-    let conn_creds = match conn_creds_res {
-        Some(Ok(conn)) => Some(conn),
-        Some(Err(err)) => {
-            panic!("error connecting to remote: {:?}", err);
-        }
-        _ => None,
     };
 
     let store = Store::new(
