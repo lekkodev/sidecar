@@ -9,6 +9,7 @@
 /// construction of this rule tree.
 ///
 /// !(A && B && C) || D can be represented by LogExp ( Not ( LogExp ( LogExp ( Atom(A) && Atom(B) ) && Atom (C))) || Atom(D))
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Rule {
     #[prost(oneof="rule::Rule", tags="1, 2, 3, 4")]
@@ -16,7 +17,8 @@ pub struct Rule {
 }
 /// Nested message and enum types in `Rule`.
 pub mod rule {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Rule {
         #[prost(message, tag="1")]
         Atom(super::Atom),
@@ -30,6 +32,7 @@ pub mod rule {
 }
 /// LogicalExpression operator applies a logical operator like "and" or "or" to two rules.
 /// They are evaluated in the order expressed by the field numbers and field names, with "first_rule" first.
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LogicalExpression {
     #[prost(message, optional, boxed, tag="1")]
@@ -42,6 +45,7 @@ pub struct LogicalExpression {
 /// An atom is a fragment of ruleslang that can result in a true or false.
 /// An atom always has a comparison operator and a context key, and can optionally
 /// have a comparison value.
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Atom {
     #[prost(string, tag="1")]
@@ -97,6 +101,23 @@ impl ComparisonOperator {
             ComparisonOperator::Present => "COMPARISON_OPERATOR_PRESENT",
         }
     }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "COMPARISON_OPERATOR_UNSPECIFIED" => Some(Self::Unspecified),
+            "COMPARISON_OPERATOR_EQUALS" => Some(Self::Equals),
+            "COMPARISON_OPERATOR_LESS_THAN" => Some(Self::LessThan),
+            "COMPARISON_OPERATOR_LESS_THAN_OR_EQUALS" => Some(Self::LessThanOrEquals),
+            "COMPARISON_OPERATOR_GREATER_THAN" => Some(Self::GreaterThan),
+            "COMPARISON_OPERATOR_GREATER_THAN_OR_EQUALS" => Some(Self::GreaterThanOrEquals),
+            "COMPARISON_OPERATOR_CONTAINED_WITHIN" => Some(Self::ContainedWithin),
+            "COMPARISON_OPERATOR_STARTS_WITH" => Some(Self::StartsWith),
+            "COMPARISON_OPERATOR_ENDS_WITH" => Some(Self::EndsWith),
+            "COMPARISON_OPERATOR_CONTAINS" => Some(Self::Contains),
+            "COMPARISON_OPERATOR_PRESENT" => Some(Self::Present),
+            _ => None,
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -115,6 +136,15 @@ impl LogicalOperator {
             LogicalOperator::Unspecified => "LOGICAL_OPERATOR_UNSPECIFIED",
             LogicalOperator::And => "LOGICAL_OPERATOR_AND",
             LogicalOperator::Or => "LOGICAL_OPERATOR_OR",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "LOGICAL_OPERATOR_UNSPECIFIED" => Some(Self::Unspecified),
+            "LOGICAL_OPERATOR_AND" => Some(Self::And),
+            "LOGICAL_OPERATOR_OR" => Some(Self::Or),
+            _ => None,
         }
     }
 }
