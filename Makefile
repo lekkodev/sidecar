@@ -44,9 +44,9 @@ lint:
 
 .PHONY: generate
 generate:
-	rm -r src/gen/proto/cli
+	rm -r sidecar/src/gen/proto/cli
 	buf generate buf.build/lekkodev/cli --template templates/buf.gen.cli.yaml --path lekko/backend --path lekko/feature --path lekko/rules
-	rm -r src/gen/proto/sdk
+	rm -r sidecar/src/gen/proto/sdk
 	buf generate buf.build/lekkodev/sdk --template templates/buf.gen.sdk.yaml
 
 .PHONY: all

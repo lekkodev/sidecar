@@ -1,4 +1,5 @@
 // @generated
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RepositoryKey {
     #[prost(string, tag="1")]
@@ -6,6 +7,7 @@ pub struct RepositoryKey {
     #[prost(string, tag="2")]
     pub repo_name: ::prost::alloc::string::String,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetBoolValueRequest {
     #[prost(string, tag="1")]
@@ -17,11 +19,13 @@ pub struct GetBoolValueRequest {
     #[prost(message, optional, tag="4")]
     pub repo_key: ::core::option::Option<RepositoryKey>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetBoolValueResponse {
     #[prost(bool, tag="1")]
     pub value: bool,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetIntValueRequest {
     #[prost(string, tag="1")]
@@ -33,11 +37,13 @@ pub struct GetIntValueRequest {
     #[prost(message, optional, tag="4")]
     pub repo_key: ::core::option::Option<RepositoryKey>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetIntValueResponse {
     #[prost(int64, tag="1")]
     pub value: i64,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetFloatValueRequest {
     #[prost(string, tag="1")]
@@ -49,11 +55,13 @@ pub struct GetFloatValueRequest {
     #[prost(message, optional, tag="4")]
     pub repo_key: ::core::option::Option<RepositoryKey>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetFloatValueResponse {
     #[prost(double, tag="1")]
     pub value: f64,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetStringValueRequest {
     #[prost(string, tag="1")]
@@ -65,11 +73,13 @@ pub struct GetStringValueRequest {
     #[prost(message, optional, tag="4")]
     pub repo_key: ::core::option::Option<RepositoryKey>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetStringValueResponse {
     #[prost(string, tag="1")]
     pub value: ::prost::alloc::string::String,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetProtoValueRequest {
     #[prost(string, tag="1")]
@@ -81,6 +91,7 @@ pub struct GetProtoValueRequest {
     #[prost(message, optional, tag="4")]
     pub repo_key: ::core::option::Option<RepositoryKey>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetProtoValueResponse {
     #[prost(message, optional, tag="1")]
@@ -88,6 +99,7 @@ pub struct GetProtoValueResponse {
     #[prost(message, optional, tag="2")]
     pub value_v2: ::core::option::Option<Any>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Any {
     #[prost(string, tag="1")]
@@ -95,6 +107,7 @@ pub struct Any {
     #[prost(bytes="vec", tag="2")]
     pub value: ::prost::alloc::vec::Vec<u8>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetJsonValueRequest {
     #[prost(string, tag="1")]
@@ -106,11 +119,13 @@ pub struct GetJsonValueRequest {
     #[prost(message, optional, tag="4")]
     pub repo_key: ::core::option::Option<RepositoryKey>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetJsonValueResponse {
     #[prost(bytes="vec", tag="1")]
     pub value: ::prost::alloc::vec::Vec<u8>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Value {
     #[prost(oneof="value::Kind", tags="1, 2, 3, 4")]
@@ -118,7 +133,8 @@ pub struct Value {
 }
 /// Nested message and enum types in `Value`.
 pub mod value {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Kind {
         #[prost(bool, tag="1")]
         BoolValue(bool),
@@ -130,6 +146,7 @@ pub mod value {
         StringValue(::prost::alloc::string::String),
     }
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RegisterRequest {
     #[prost(message, optional, tag="1")]
@@ -139,12 +156,15 @@ pub struct RegisterRequest {
     #[prost(string, repeated, tag="2")]
     pub namespace_list: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RegisterResponse {
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DeregisterRequest {
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DeregisterResponse {
 }

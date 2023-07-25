@@ -1,4 +1,8 @@
-use std::{collections::HashMap, net::SocketAddr, time::{Duration, SystemTime}};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    time::{Duration, SystemTime},
+};
 
 use futures::{stream::FuturesUnordered, StreamExt};
 use hyper::client::HttpConnector;
