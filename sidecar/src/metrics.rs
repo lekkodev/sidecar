@@ -1,4 +1,8 @@
-use std::{collections::HashMap, net::SocketAddr, time::Duration};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    time::{Duration, SystemTime},
+};
 
 use futures::{stream::FuturesUnordered, StreamExt};
 use hyper::client::HttpConnector;
@@ -6,6 +10,7 @@ use hyper_rustls::HttpsConnector;
 use itertools::Itertools;
 use log::{debug, error, warn};
 use metrics_exporter_prometheus::PrometheusBuilder;
+use prost_types::Timestamp;
 use tokio::{
     select, spawn,
     sync::mpsc::{channel, Receiver, Sender},
@@ -69,6 +74,7 @@ impl Metrics {
         result_path: &[usize],
     ) {
         let event = FlagEvaluationEvent {
+            client_event_time: Some(Timestamp::from(SystemTime::now())),
             repo_key: Some(feature_params.rk.clone()),
             commit_sha: feature_data.commit_sha.clone(),
             feature_sha: feature_data.feature_sha.clone(),

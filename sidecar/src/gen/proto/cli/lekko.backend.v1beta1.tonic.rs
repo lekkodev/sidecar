@@ -12,7 +12,7 @@ pub mod distribution_service_client {
         /// Attempt to create a new client by connecting to a given endpoint.
         pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
         where
-            D: std::convert::TryInto<tonic::transport::Endpoint>,
+            D: TryInto<tonic::transport::Endpoint>,
             D::Error: Into<StdError>,
         {
             let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
@@ -68,10 +68,26 @@ pub mod distribution_service_client {
             self.inner = self.inner.accept_compressed(encoding);
             self
         }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
         pub async fn get_repository_version(
             &mut self,
             request: impl tonic::IntoRequest<super::GetRepositoryVersionRequest>,
-        ) -> Result<
+        ) -> std::result::Result<
             tonic::Response<super::GetRepositoryVersionResponse>,
             tonic::Status,
         > {
@@ -88,12 +104,20 @@ pub mod distribution_service_client {
             let path = http::uri::PathAndQuery::from_static(
                 "/lekko.backend.v1beta1.DistributionService/GetRepositoryVersion",
             );
-            self.inner.unary(request.into_request(), path, codec).await
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "lekko.backend.v1beta1.DistributionService",
+                        "GetRepositoryVersion",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
         }
         pub async fn get_repository_contents(
             &mut self,
             request: impl tonic::IntoRequest<super::GetRepositoryContentsRequest>,
-        ) -> Result<
+        ) -> std::result::Result<
             tonic::Response<super::GetRepositoryContentsResponse>,
             tonic::Status,
         > {
@@ -110,12 +134,20 @@ pub mod distribution_service_client {
             let path = http::uri::PathAndQuery::from_static(
                 "/lekko.backend.v1beta1.DistributionService/GetRepositoryContents",
             );
-            self.inner.unary(request.into_request(), path, codec).await
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "lekko.backend.v1beta1.DistributionService",
+                        "GetRepositoryContents",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
         }
         pub async fn send_flag_evaluation_metrics(
             &mut self,
             request: impl tonic::IntoRequest<super::SendFlagEvaluationMetricsRequest>,
-        ) -> Result<
+        ) -> std::result::Result<
             tonic::Response<super::SendFlagEvaluationMetricsResponse>,
             tonic::Status,
         > {
@@ -132,12 +164,23 @@ pub mod distribution_service_client {
             let path = http::uri::PathAndQuery::from_static(
                 "/lekko.backend.v1beta1.DistributionService/SendFlagEvaluationMetrics",
             );
-            self.inner.unary(request.into_request(), path, codec).await
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "lekko.backend.v1beta1.DistributionService",
+                        "SendFlagEvaluationMetrics",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
         }
         pub async fn register_client(
             &mut self,
             request: impl tonic::IntoRequest<super::RegisterClientRequest>,
-        ) -> Result<tonic::Response<super::RegisterClientResponse>, tonic::Status> {
+        ) -> std::result::Result<
+            tonic::Response<super::RegisterClientResponse>,
+            tonic::Status,
+        > {
             self.inner
                 .ready()
                 .await
@@ -151,12 +194,23 @@ pub mod distribution_service_client {
             let path = http::uri::PathAndQuery::from_static(
                 "/lekko.backend.v1beta1.DistributionService/RegisterClient",
             );
-            self.inner.unary(request.into_request(), path, codec).await
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "lekko.backend.v1beta1.DistributionService",
+                        "RegisterClient",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
         }
         pub async fn deregister_client(
             &mut self,
             request: impl tonic::IntoRequest<super::DeregisterClientRequest>,
-        ) -> Result<tonic::Response<super::DeregisterClientResponse>, tonic::Status> {
+        ) -> std::result::Result<
+            tonic::Response<super::DeregisterClientResponse>,
+            tonic::Status,
+        > {
             self.inner
                 .ready()
                 .await
@@ -170,12 +224,20 @@ pub mod distribution_service_client {
             let path = http::uri::PathAndQuery::from_static(
                 "/lekko.backend.v1beta1.DistributionService/DeregisterClient",
             );
-            self.inner.unary(request.into_request(), path, codec).await
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "lekko.backend.v1beta1.DistributionService",
+                        "DeregisterClient",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
         }
         pub async fn get_developer_access_token(
             &mut self,
             request: impl tonic::IntoRequest<super::GetDeveloperAccessTokenRequest>,
-        ) -> Result<
+        ) -> std::result::Result<
             tonic::Response<super::GetDeveloperAccessTokenResponse>,
             tonic::Status,
         > {
@@ -192,7 +254,15 @@ pub mod distribution_service_client {
             let path = http::uri::PathAndQuery::from_static(
                 "/lekko.backend.v1beta1.DistributionService/GetDeveloperAccessToken",
             );
-            self.inner.unary(request.into_request(), path, codec).await
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "lekko.backend.v1beta1.DistributionService",
+                        "GetDeveloperAccessToken",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
         }
     }
 }
@@ -200,39 +270,48 @@ pub mod distribution_service_client {
 pub mod distribution_service_server {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
     use tonic::codegen::*;
-    ///Generated trait containing gRPC methods that should be implemented for use with DistributionServiceServer.
+    /// Generated trait containing gRPC methods that should be implemented for use with DistributionServiceServer.
     #[async_trait]
     pub trait DistributionService: Send + Sync + 'static {
         async fn get_repository_version(
             &self,
             request: tonic::Request<super::GetRepositoryVersionRequest>,
-        ) -> Result<tonic::Response<super::GetRepositoryVersionResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::GetRepositoryVersionResponse>,
+            tonic::Status,
+        >;
         async fn get_repository_contents(
             &self,
             request: tonic::Request<super::GetRepositoryContentsRequest>,
-        ) -> Result<
+        ) -> std::result::Result<
             tonic::Response<super::GetRepositoryContentsResponse>,
             tonic::Status,
         >;
         async fn send_flag_evaluation_metrics(
             &self,
             request: tonic::Request<super::SendFlagEvaluationMetricsRequest>,
-        ) -> Result<
+        ) -> std::result::Result<
             tonic::Response<super::SendFlagEvaluationMetricsResponse>,
             tonic::Status,
         >;
         async fn register_client(
             &self,
             request: tonic::Request<super::RegisterClientRequest>,
-        ) -> Result<tonic::Response<super::RegisterClientResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::RegisterClientResponse>,
+            tonic::Status,
+        >;
         async fn deregister_client(
             &self,
             request: tonic::Request<super::DeregisterClientRequest>,
-        ) -> Result<tonic::Response<super::DeregisterClientResponse>, tonic::Status>;
+        ) -> std::result::Result<
+            tonic::Response<super::DeregisterClientResponse>,
+            tonic::Status,
+        >;
         async fn get_developer_access_token(
             &self,
             request: tonic::Request<super::GetDeveloperAccessTokenRequest>,
-        ) -> Result<
+        ) -> std::result::Result<
             tonic::Response<super::GetDeveloperAccessTokenResponse>,
             tonic::Status,
         >;
@@ -242,6 +321,8 @@ pub mod distribution_service_server {
         inner: _Inner<T>,
         accept_compression_encodings: EnabledCompressionEncodings,
         send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
     }
     struct _Inner<T>(Arc<T>);
     impl<T: DistributionService> DistributionServiceServer<T> {
@@ -254,6 +335,8 @@ pub mod distribution_service_server {
                 inner,
                 accept_compression_encodings: Default::default(),
                 send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
             }
         }
         pub fn with_interceptor<F>(
@@ -277,6 +360,22 @@ pub mod distribution_service_server {
             self.send_compression_encodings.enable(encoding);
             self
         }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
     }
     impl<T, B> tonic::codegen::Service<http::Request<B>> for DistributionServiceServer<T>
     where
@@ -290,7 +389,7 @@ pub mod distribution_service_server {
         fn poll_ready(
             &mut self,
             _cx: &mut Context<'_>,
-        ) -> Poll<Result<(), Self::Error>> {
+        ) -> Poll<std::result::Result<(), Self::Error>> {
             Poll::Ready(Ok(()))
         }
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
@@ -312,7 +411,7 @@ pub mod distribution_service_server {
                             &mut self,
                             request: tonic::Request<super::GetRepositoryVersionRequest>,
                         ) -> Self::Future {
-                            let inner = self.0.clone();
+                            let inner = Arc::clone(&self.0);
                             let fut = async move {
                                 (*inner).get_repository_version(request).await
                             };
@@ -321,6 +420,8 @@ pub mod distribution_service_server {
                     }
                     let accept_compression_encodings = self.accept_compression_encodings;
                     let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
@@ -330,6 +431,10 @@ pub mod distribution_service_server {
                             .apply_compression_config(
                                 accept_compression_encodings,
                                 send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
                             );
                         let res = grpc.unary(method, req).await;
                         Ok(res)
@@ -352,7 +457,7 @@ pub mod distribution_service_server {
                             &mut self,
                             request: tonic::Request<super::GetRepositoryContentsRequest>,
                         ) -> Self::Future {
-                            let inner = self.0.clone();
+                            let inner = Arc::clone(&self.0);
                             let fut = async move {
                                 (*inner).get_repository_contents(request).await
                             };
@@ -361,6 +466,8 @@ pub mod distribution_service_server {
                     }
                     let accept_compression_encodings = self.accept_compression_encodings;
                     let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
@@ -370,6 +477,10 @@ pub mod distribution_service_server {
                             .apply_compression_config(
                                 accept_compression_encodings,
                                 send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
                             );
                         let res = grpc.unary(method, req).await;
                         Ok(res)
@@ -397,7 +508,7 @@ pub mod distribution_service_server {
                                 super::SendFlagEvaluationMetricsRequest,
                             >,
                         ) -> Self::Future {
-                            let inner = self.0.clone();
+                            let inner = Arc::clone(&self.0);
                             let fut = async move {
                                 (*inner).send_flag_evaluation_metrics(request).await
                             };
@@ -406,6 +517,8 @@ pub mod distribution_service_server {
                     }
                     let accept_compression_encodings = self.accept_compression_encodings;
                     let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
@@ -415,6 +528,10 @@ pub mod distribution_service_server {
                             .apply_compression_config(
                                 accept_compression_encodings,
                                 send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
                             );
                         let res = grpc.unary(method, req).await;
                         Ok(res)
@@ -437,7 +554,7 @@ pub mod distribution_service_server {
                             &mut self,
                             request: tonic::Request<super::RegisterClientRequest>,
                         ) -> Self::Future {
-                            let inner = self.0.clone();
+                            let inner = Arc::clone(&self.0);
                             let fut = async move {
                                 (*inner).register_client(request).await
                             };
@@ -446,6 +563,8 @@ pub mod distribution_service_server {
                     }
                     let accept_compression_encodings = self.accept_compression_encodings;
                     let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
@@ -455,6 +574,10 @@ pub mod distribution_service_server {
                             .apply_compression_config(
                                 accept_compression_encodings,
                                 send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
                             );
                         let res = grpc.unary(method, req).await;
                         Ok(res)
@@ -477,7 +600,7 @@ pub mod distribution_service_server {
                             &mut self,
                             request: tonic::Request<super::DeregisterClientRequest>,
                         ) -> Self::Future {
-                            let inner = self.0.clone();
+                            let inner = Arc::clone(&self.0);
                             let fut = async move {
                                 (*inner).deregister_client(request).await
                             };
@@ -486,6 +609,8 @@ pub mod distribution_service_server {
                     }
                     let accept_compression_encodings = self.accept_compression_encodings;
                     let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
@@ -495,6 +620,10 @@ pub mod distribution_service_server {
                             .apply_compression_config(
                                 accept_compression_encodings,
                                 send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
                             );
                         let res = grpc.unary(method, req).await;
                         Ok(res)
@@ -521,7 +650,7 @@ pub mod distribution_service_server {
                                 super::GetDeveloperAccessTokenRequest,
                             >,
                         ) -> Self::Future {
-                            let inner = self.0.clone();
+                            let inner = Arc::clone(&self.0);
                             let fut = async move {
                                 (*inner).get_developer_access_token(request).await
                             };
@@ -530,6 +659,8 @@ pub mod distribution_service_server {
                     }
                     let accept_compression_encodings = self.accept_compression_encodings;
                     let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
                         let inner = inner.0;
@@ -539,6 +670,10 @@ pub mod distribution_service_server {
                             .apply_compression_config(
                                 accept_compression_encodings,
                                 send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
                             );
                         let res = grpc.unary(method, req).await;
                         Ok(res)
@@ -567,12 +702,14 @@ pub mod distribution_service_server {
                 inner,
                 accept_compression_encodings: self.accept_compression_encodings,
                 send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
             }
         }
     }
     impl<T: DistributionService> Clone for _Inner<T> {
         fn clone(&self) -> Self {
-            Self(self.0.clone())
+            Self(Arc::clone(&self.0))
         }
     }
     impl<T: std::fmt::Debug> std::fmt::Debug for _Inner<T> {

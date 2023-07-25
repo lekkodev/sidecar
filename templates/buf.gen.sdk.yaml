@@ -1,14 +1,13 @@
 version: v1
 plugins:
-  - name: prost
+  - plugin: buf.build/community/neoeinstein-prost:v0.2.3
     out: sidecar/src/gen/proto/sdk
     opt:
       - file_descriptor_set
-  - name: tonic
+  - plugin: buf.build/community/neoeinstein-tonic:v0.3.0
     out: sidecar/src/gen/proto/sdk
-  - name: prost-crate
+  - plugin: buf.build/community/neoeinstein-prost-crate:v0.3.1 
     out: sidecar/src/gen/proto/sdk
-    strategy: all
     opt:
       - no_features
       - include_file=mod.rs

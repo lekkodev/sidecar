@@ -223,11 +223,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match (res, &args.mode) {
                 (Ok(conn), _) => Some(conn),
                 // don't panic in static mode, sidecar can work without remote
-                (Err(_), Mode::Static) => Some(ConnectionCredentials{
-                            session_key: "".to_string(),
-                            repo_key: rk.clone(),
-                            api_key: key.clone(),
-                        }),
+                (Err(_), Mode::Static) => Some(ConnectionCredentials {
+                    session_key: "".to_string(),
+                    repo_key: rk.clone(),
+                    api_key: key.clone(),
+                }),
                 (Err(err), _) => {
                     panic!("error connecting to remote: {:?}", err);
                 }
