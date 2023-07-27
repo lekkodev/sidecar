@@ -34,8 +34,12 @@ echo Creating manifest list for $version
 docker manifest create $registry/$repository:$version \
     $registry/$repository:$version-amd64  \
     $registry/$repository:$version-arm64
-docker manifest annotate --arch amd64 $registry/$repository:$version $registry/$repository:$version-amd64
-docker manifest annotate --arch arm64 $registry/$repository:$version $registry/$repository:$version-arm64
+
+for arch in amd64 arm64
+do
+    docker manifest annotate --arch $arch $registry/$repository:$version $registry/$repository:$version-$arch    
+done
+
 docker manifest push $registry/$repository:$version
 
 echo Released $version. View the release here: https://gallery.ecr.aws/lekko/lekko/sidecar
