@@ -7,9 +7,13 @@ use std::{
 
 use crate::{
     gen::cli::lekko::{
-        backend::v1beta1::{
-            distribution_service_client::DistributionServiceClient, GetRepositoryContentsRequest,
-            GetRepositoryContentsResponse, GetRepositoryVersionRequest, Namespace,
+        backend::{
+            self,
+            v1beta1::{
+                distribution_service_client::DistributionServiceClient,
+                GetRepositoryContentsRequest, GetRepositoryContentsResponse,
+                GetRepositoryVersionRequest, Namespace,
+            },
         },
         feature::v1beta1::Feature,
     },
@@ -304,5 +308,47 @@ impl Store {
                 commit_sha: repo_version.clone(),
                 feature_sha: feature.version.clone(),
             });
+    }
+
+    pub fn get_version_local(&self) -> String {
+        return (*self.state.read().unwrap().repo_version).to_owned();
+    }
+
+    pub fn get_repo_contents_local(
+        &self,
+        namespace_filter: &str,
+        feature_filter: &str,
+    ) -> (String, Vec<Namespace>) {
+        let ConcurrentState {
+            cache,
+            repo_version,
+        } = &*self.state.read().unwrap();
+
+        (
+            repo_version.clone(),
+            cache
+                .iter()
+                .filter(|(feature_key, _)| {
+                    !(namespace_filter.is_empty() && namespace_filter != feature_key.namespace
+                        || feature_filter.is_empty() && feature_filter != feature_key.feature)
+                })
+                .fold(
+                    HashMap::<String, Vec<backend::v1beta1::Feature>>::new(),
+                    |mut vec_map, (feature_key, feature)| {
+                        vec_map
+                            .entry(feature_key.namespace.clone())
+                            .or_insert_with(Vec::new)
+                            .push(backend::v1beta1::Feature {
+                                name: feature_key.feature.clone(),
+                                sha: feature.version.clone(),
+                                feature: Some(feature.feature.clone()),
+                            });
+                        vec_map
+                    },
+                )
+                .into_iter()
+                .map(|(name, features)| Namespace { name, features })
+                .collect(),
+        )
     }
 }
