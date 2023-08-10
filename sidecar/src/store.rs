@@ -326,12 +326,20 @@ impl Store {
 
         (
             repo_version.clone(),
-            cache
-                .iter()
-                .filter(|(feature_key, _)| {
-                    !(namespace_filter.is_empty() && namespace_filter != feature_key.namespace
-                        || feature_filter.is_empty() && feature_filter != feature_key.feature)
-                })
+            filter_cache(cache, namespace_filter, feature_filter),
+        )
+    }
+}
+
+fn filter_cache(cache: &FeatureStore,
+    namespace_filter: &str,
+    feature_filter: &str) -> Vec<Namespace> {
+    cache
+        .iter()
+        .filter(|(feature_key, _)| {
+            (namespace_filter.is_empty() || namespace_filter == feature_key.namespace)
+                && (feature_filter.is_empty() || feature_filter == feature_key.feature)
+        })
                 .fold(
                     HashMap::<String, Vec<backend::v1beta1::Feature>>::new(),
                     |mut vec_map, (feature_key, feature)| {
@@ -348,7 +356,32 @@ impl Store {
                 )
                 .into_iter()
                 .map(|(name, features)| Namespace { name, features })
-                .collect(),
-        )
+                .collect()
+    }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_filter() {
+        let mut cache = FeatureStore::new();
+        let input = [("ns1", "feat1"),
+        ("ns2", "feat2"),
+        ("ns3", "feat3"),
+        ("ns1", "feat4"),
+        ("ns2", "feat5")];
+        for (ns, feat) in input {
+            cache.insert(FeatureKey{namespace: ns.to_owned(), feature: feat.to_owned()}, FeatureInfo { feature: Feature::default(), version: feat.to_owned() });
+        }
+        let res = filter_cache(&cache, "", "");
+        assert_eq!(res.len(), 3);
+        let res = filter_cache(&cache, "ns1", "");
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].features.len(), 2);
+        let res = filter_cache(&cache, "ns1", "feat1");
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].features.len(), 1);
     }
 }
