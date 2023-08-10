@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use hyper::client::HttpConnector;
 use hyper_rustls::HttpsConnector;
-use tonic::{body::BoxBody, Request, Response};
+use tonic::{body::BoxBody, Request, Response, Status};
 
 use crate::{
     gen::cli::lekko::backend::v1beta1::{
@@ -31,8 +31,21 @@ pub struct Service {
 impl DistributionService for Service {
     async fn get_repository_version(
         &self,
-        _request: Request<GetRepositoryVersionRequest>,
+        request: Request<GetRepositoryVersionRequest>,
     ) -> Result<tonic::Response<GetRepositoryVersionResponse>, tonic::Status> {
+        let requested_rk = request
+            .get_ref()
+            .repo_key
+            .as_ref()
+            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
+        if self.repo_key.owner_name != requested_rk.owner_name
+            || self.repo_key.repo_name != requested_rk.repo_name
+        {
+            return Err(Status::invalid_argument(format!(
+                "registration mismatch: requested_repo: {:?}, vs. repo: {:?}",
+                requested_rk, self.repo_key
+            )));
+        }
         return Ok(Response::new(GetRepositoryVersionResponse {
             commit_sha: self.store.get_version_local(),
         }));
@@ -41,6 +54,19 @@ impl DistributionService for Service {
         &self,
         request: Request<GetRepositoryContentsRequest>,
     ) -> Result<tonic::Response<GetRepositoryContentsResponse>, tonic::Status> {
+        let requested_rk = request
+            .get_ref()
+            .repo_key
+            .as_ref()
+            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
+        if self.repo_key.owner_name != requested_rk.owner_name
+            || self.repo_key.repo_name != requested_rk.repo_name
+        {
+            return Err(Status::invalid_argument(format!(
+                "registration mismatch: requested_repo: {:?}, vs. repo: {:?}",
+                requested_rk, self.repo_key
+            )));
+        }
         let request = request.into_inner();
         let (version, namespaces) = self
             .store
@@ -72,6 +98,19 @@ impl DistributionService for Service {
         &self,
         request: tonic::Request<RegisterClientRequest>,
     ) -> std::result::Result<tonic::Response<RegisterClientResponse>, tonic::Status> {
+        let requested_rk = request
+            .get_ref()
+            .repo_key
+            .as_ref()
+            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?;
+        if self.repo_key.owner_name != requested_rk.owner_name
+            || self.repo_key.repo_name != requested_rk.repo_name
+        {
+            return Err(Status::invalid_argument(format!(
+                "registration mismatch: requested_repo: {:?}, vs. repo: {:?}",
+                requested_rk, self.repo_key
+            )));
+        }
         if self.conn_creds.is_none() && request.metadata().get(APIKEY).is_none() {
             return Ok(tonic::Response::new(RegisterClientResponse::default()));
         }
