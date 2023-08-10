@@ -71,6 +71,18 @@ pub fn add_api_key<T: Message>(m: T, api_key: MetadataValue<Ascii>) -> tonic::Re
     r
 }
 
+// If we have a message that may have an api key, override it only if
+// we have an apikey, and one isn't contained in the request.
+pub fn override_api_key<T: Message>(
+    mut r: tonic::Request<T>,
+    conn_creds_opt: &Option<ConnectionCredentials>,
+) -> tonic::Request<T> {
+    if let (Some(_), Some(cc)) = (r.metadata().get(APIKEY), conn_creds_opt) {
+        r.metadata_mut().append(APIKEY, cc.api_key.clone());
+    }
+    r
+}
+
 pub fn get_owner_and_repo(path: &str) -> Option<(String, String)> {
     let parts: Vec<&str> = path.trim_end_matches(".git").split('/').collect();
     if parts.len() >= 2 {

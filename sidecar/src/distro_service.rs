@@ -14,7 +14,7 @@ use crate::{
         SendFlagEvaluationMetricsRequest, SendFlagEvaluationMetricsResponse,
     },
     store::Store,
-    types::ConnectionCredentials,
+    types::{override_api_key, ConnectionCredentials, APIKEY},
 };
 
 // This is the main rpc entrypoint into the sidecar. All host pods will communicate with the
@@ -56,12 +56,15 @@ impl DistributionService for Service {
         request: tonic::Request<SendFlagEvaluationMetricsRequest>,
     ) -> std::result::Result<tonic::Response<SendFlagEvaluationMetricsResponse>, tonic::Status>
     {
-        // TODO: get this logic right.
-        //if self.conn_creds.is_none() && request.extensions().get()
+        if self.conn_creds.is_none() && request.metadata().get(APIKEY).is_none() {
+            return Ok(tonic::Response::new(
+                SendFlagEvaluationMetricsResponse::default(),
+            ));
+        }
         self.distro_client
             .clone()
             .to_owned()
-            .send_flag_evaluation_metrics(request)
+            .send_flag_evaluation_metrics(override_api_key(request, &self.conn_creds))
             .await
     }
 
@@ -69,10 +72,13 @@ impl DistributionService for Service {
         &self,
         request: tonic::Request<RegisterClientRequest>,
     ) -> std::result::Result<tonic::Response<RegisterClientResponse>, tonic::Status> {
+        if self.conn_creds.is_none() && request.metadata().get(APIKEY).is_none() {
+            return Ok(tonic::Response::new(RegisterClientResponse::default()));
+        }
         self.distro_client
             .clone()
             .to_owned()
-            .register_client(request)
+            .register_client(override_api_key(request, &self.conn_creds))
             .await
     }
 
@@ -80,10 +86,13 @@ impl DistributionService for Service {
         &self,
         request: tonic::Request<DeregisterClientRequest>,
     ) -> std::result::Result<tonic::Response<DeregisterClientResponse>, tonic::Status> {
+        if self.conn_creds.is_none() && request.metadata().get(APIKEY).is_none() {
+            return Ok(tonic::Response::new(DeregisterClientResponse::default()));
+        }
         self.distro_client
             .clone()
             .to_owned()
-            .deregister_client(request)
+            .deregister_client(override_api_key(request, &self.conn_creds))
             .await
     }
 
