@@ -331,35 +331,35 @@ impl Store {
     }
 }
 
-fn filter_cache(cache: &FeatureStore,
+fn filter_cache(
+    cache: &FeatureStore,
     namespace_filter: &str,
-    feature_filter: &str) -> Vec<Namespace> {
+    feature_filter: &str,
+) -> Vec<Namespace> {
     cache
         .iter()
         .filter(|(feature_key, _)| {
             (namespace_filter.is_empty() || namespace_filter == feature_key.namespace)
                 && (feature_filter.is_empty() || feature_filter == feature_key.feature)
         })
-                .fold(
-                    HashMap::<String, Vec<backend::v1beta1::Feature>>::new(),
-                    |mut vec_map, (feature_key, feature)| {
-                        vec_map
-                            .entry(feature_key.namespace.clone())
-                            .or_insert_with(Vec::new)
-                            .push(backend::v1beta1::Feature {
-                                name: feature_key.feature.clone(),
-                                sha: feature.version.clone(),
-                                feature: Some(feature.feature.clone()),
-                            });
-                        vec_map
-                    },
-                )
-                .into_iter()
-                .map(|(name, features)| Namespace { name, features })
-                .collect()
-    }
-
-
+        .fold(
+            HashMap::<String, Vec<backend::v1beta1::Feature>>::new(),
+            |mut vec_map, (feature_key, feature)| {
+                vec_map
+                    .entry(feature_key.namespace.clone())
+                    .or_insert_with(Vec::new)
+                    .push(backend::v1beta1::Feature {
+                        name: feature_key.feature.clone(),
+                        sha: feature.version.clone(),
+                        feature: Some(feature.feature.clone()),
+                    });
+                vec_map
+            },
+        )
+        .into_iter()
+        .map(|(name, features)| Namespace { name, features })
+        .collect()
+}
 
 #[cfg(test)]
 mod tests {
@@ -367,13 +367,24 @@ mod tests {
     #[test]
     fn test_filter() {
         let mut cache = FeatureStore::new();
-        let input = [("ns1", "feat1"),
-        ("ns2", "feat2"),
-        ("ns3", "feat3"),
-        ("ns1", "feat4"),
-        ("ns2", "feat5")];
+        let input = [
+            ("ns1", "feat1"),
+            ("ns2", "feat2"),
+            ("ns3", "feat3"),
+            ("ns1", "feat4"),
+            ("ns2", "feat5"),
+        ];
         for (ns, feat) in input {
-            cache.insert(FeatureKey{namespace: ns.to_owned(), feature: feat.to_owned()}, FeatureInfo { feature: Feature::default(), version: feat.to_owned() });
+            cache.insert(
+                FeatureKey {
+                    namespace: ns.to_owned(),
+                    feature: feat.to_owned(),
+                },
+                FeatureInfo {
+                    feature: Feature::default(),
+                    version: feat.to_owned(),
+                },
+            );
         }
         let res = filter_cache(&cache, "", "");
         assert_eq!(res.len(), 3);
