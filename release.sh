@@ -1,6 +1,6 @@
 #!/bin/bash
 
-registry=public.ecr.aws/lekko
+registry=public.ecr.aws/g0r8j2n2
 repository=lekko/sidecar
 
 # First, check for credentials so we can later proceed to change state safely.
@@ -17,7 +17,7 @@ echo Releasing version $version
 for arch in amd64 arm64
 do
     echo Building for architecture linux/$arch
-    docker build -t $registry/$repository:$version-$arch --build-arg SIDECAR_VERSION=$version --build-arg SIDECAR_GIT_COMMIT=$git_commit -f Dockerfile.sidecar --arch=linux/$arch .
+    docker build -t $registry/$repository:$version-$arch --build-arg SIDECAR_VERSION=$version --build-arg SIDECAR_GIT_COMMIT=$git_commit -f Dockerfile.sidecar --platform=linux/$arch .
 done
 
 echo Tagging version $version
