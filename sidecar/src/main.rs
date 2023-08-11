@@ -142,6 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(),
     );
 
+    // By default, send and accept GZip compression for both the client and the server.
     let dist_client = DistributionServiceClient::with_origin(http_client, lekko_addr)
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
