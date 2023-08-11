@@ -1,15 +1,12 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use hyper::client::HttpConnector;
-use hyper_rustls::HttpsConnector;
 use prost_types::{value::Kind, Any};
-use tonic::{body::BoxBody, metadata::MetadataMap, Request, Response, Status};
+use tonic::{metadata::MetadataMap, Request, Response, Status};
 
 use crate::{
     evaluate::evaluator::{evaluate, EvalContext},
     gen::cli::lekko::{backend::v1beta1::RepositoryKey, feature::v1beta1::FeatureType},
     gen::sdk::lekko::client::v1beta1::{
-        configuration_service_client::ConfigurationServiceClient,
         configuration_service_server::ConfigurationService, Any as LekkoAny, DeregisterRequest,
         DeregisterResponse, GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest,
         GetFloatValueResponse, GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest,
@@ -25,9 +22,7 @@ use crate::{
 // This is the main rpc entrypoint into the sidecar. All host pods will communicate with the
 // sidecar via this Service, using the language-native SDK.
 pub struct Service {
-    pub config_client:
-        ConfigurationServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
-    pub store: Store,
+    pub store: Arc<Store>,
     pub mode: Mode,
     pub metrics: Option<Metrics>,
     pub repo_key: RepositoryKey,

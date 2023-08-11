@@ -7,9 +7,13 @@ use std::{
 
 use crate::{
     gen::cli::lekko::{
-        backend::v1beta1::{
-            distribution_service_client::DistributionServiceClient, GetRepositoryContentsRequest,
-            GetRepositoryContentsResponse, GetRepositoryVersionRequest, Namespace,
+        backend::{
+            self,
+            v1beta1::{
+                distribution_service_client::DistributionServiceClient,
+                GetRepositoryContentsRequest, GetRepositoryContentsResponse,
+                GetRepositoryVersionRequest, Namespace,
+            },
         },
         feature::v1beta1::Feature,
     },
@@ -304,5 +308,91 @@ impl Store {
                 commit_sha: repo_version.clone(),
                 feature_sha: feature.version.clone(),
             });
+    }
+
+    pub fn get_version_local(&self) -> String {
+        return (*self.state.read().unwrap().repo_version).to_owned();
+    }
+
+    pub fn get_repo_contents_local(
+        &self,
+        namespace_filter: &str,
+        feature_filter: &str,
+    ) -> (String, Vec<Namespace>) {
+        let ConcurrentState {
+            cache,
+            repo_version,
+        } = &*self.state.read().unwrap();
+
+        (
+            repo_version.clone(),
+            filter_cache(cache, namespace_filter, feature_filter),
+        )
+    }
+}
+
+fn filter_cache(
+    cache: &FeatureStore,
+    namespace_filter: &str,
+    feature_filter: &str,
+) -> Vec<Namespace> {
+    cache
+        .iter()
+        .filter(|(feature_key, _)| {
+            (namespace_filter.is_empty() || namespace_filter == feature_key.namespace)
+                && (feature_filter.is_empty() || feature_filter == feature_key.feature)
+        })
+        .fold(
+            HashMap::<String, Vec<backend::v1beta1::Feature>>::new(),
+            |mut vec_map, (feature_key, feature)| {
+                vec_map
+                    .entry(feature_key.namespace.clone())
+                    .or_insert_with(Vec::new)
+                    .push(backend::v1beta1::Feature {
+                        name: feature_key.feature.clone(),
+                        sha: feature.version.clone(),
+                        feature: Some(feature.feature.clone()),
+                    });
+                vec_map
+            },
+        )
+        .into_iter()
+        .map(|(name, features)| Namespace { name, features })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_filter() {
+        let mut cache = FeatureStore::new();
+        let input = [
+            ("ns1", "feat1"),
+            ("ns2", "feat2"),
+            ("ns3", "feat3"),
+            ("ns1", "feat4"),
+            ("ns2", "feat5"),
+        ];
+        for (ns, feat) in input {
+            cache.insert(
+                FeatureKey {
+                    namespace: ns.to_owned(),
+                    feature: feat.to_owned(),
+                },
+                FeatureInfo {
+                    feature: Feature::default(),
+                    version: feat.to_owned(),
+                },
+            );
+        }
+        let res = filter_cache(&cache, "", "");
+        assert_eq!(res.len(), 3);
+        let res = filter_cache(&cache, "ns1", "");
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].features.len(), 2);
+        let res = filter_cache(&cache, "ns1", "feat1");
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].features.len(), 1);
     }
 }

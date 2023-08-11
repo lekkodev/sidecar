@@ -2,23 +2,25 @@ use clap::Parser;
 use hyper_rustls::HttpsConnectorBuilder;
 use metrics::counter;
 use sidecar::gen::cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
+use sidecar::gen::cli::lekko::backend::v1beta1::distribution_service_server::DistributionServiceServer;
 use sidecar::gen::cli::lekko::backend::v1beta1::GetRepositoryContentsRequest;
 use sidecar::gen::cli::lekko::backend::v1beta1::RegisterClientRequest;
 use sidecar::gen::cli::lekko::backend::v1beta1::RepositoryKey;
-use sidecar::gen::sdk::lekko::client::v1beta1::configuration_service_client::ConfigurationServiceClient;
 use sidecar::gen::sdk::lekko::client::v1beta1::configuration_service_server::ConfigurationServiceServer;
 use sidecar::repofs::RepoFS;
 
 use hyper::{http::Request, Body};
 use log::log;
+use sidecar::config_service;
+use sidecar::distro_service;
 use sidecar::logging;
 use sidecar::metrics::Metrics;
 use sidecar::metrics::RuntimeMetrics;
-use sidecar::service::Service;
 use sidecar::store::Store;
 use sidecar::types::{add_api_key, ConnectionCredentials, Mode};
 use std::fmt::Debug;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal::unix::SignalKind;
 use tokio::time::sleep;
@@ -141,10 +143,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // By default, send and accept GZip compression for both the client and the server.
-    let config_client =
-        ConfigurationServiceClient::with_origin(http_client.clone(), lekko_addr.clone())
-            .send_compressed(CompressionEncoding::Gzip)
-            .accept_compressed(CompressionEncoding::Gzip);
     let dist_client = DistributionServiceClient::with_origin(http_client, lekko_addr)
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
@@ -236,28 +234,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => None,
     };
 
-    let store = Store::new(
+    let store = Arc::new(Store::new(
         dist_client.clone(),
         bootstrap_data,
         conn_creds.clone(),
         args.poll_interval,
         args.mode.to_owned(),
         args.repo_path,
-    );
-    let session_key = conn_creds.map(|c| c.session_key);
-    let service: ConfigurationServiceServer<Service> = ConfigurationServiceServer::new(Service {
-        config_client,
-        store,
-        mode: args.mode,
-        metrics: api_key.map(|k| Metrics::new(dist_client, k.clone(), session_key)),
-        repo_key: rk,
-    })
-    .send_compressed(CompressionEncoding::Gzip)
-    .accept_compressed(CompressionEncoding::Gzip);
+    ));
+
+    let session_key_opt = conn_creds.as_ref().map(|c| c.session_key.clone());
+    let config_service: ConfigurationServiceServer<config_service::Service> =
+        ConfigurationServiceServer::new(config_service::Service {
+            store: store.clone(),
+            mode: args.mode,
+            metrics: api_key.map(|k| Metrics::new(dist_client.clone(), k.clone(), session_key_opt)),
+            repo_key: rk.clone(),
+        })
+        .send_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Gzip);
+
+    let distro_service: DistributionServiceServer<distro_service::Service> =
+        DistributionServiceServer::new(distro_service::Service {
+            distro_client: dist_client,
+            store,
+            repo_key: rk,
+            conn_creds,
+        })
+        .send_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Gzip);
 
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
-        .set_serving::<ConfigurationServiceServer<Service>>()
+        .set_serving::<ConfigurationServiceServer<config_service::Service>>()
+        .await;
+    health_reporter
+        .set_serving::<DistributionServiceServer<distro_service::Service>>()
         .await;
 
     Server::builder()
@@ -286,7 +298,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .latency_unit(LatencyUnit::Millis),
                 ),
         )
-        .add_service(service)
+        .add_service(distro_service)
+        .add_service(config_service)
         .add_service(health_service)
         .serve_with_shutdown(addr, async move {
             tokio::signal::unix::signal(SignalKind::terminate())
