@@ -1,8 +1,8 @@
+use crate::gen::cli::lekko::backend::v1beta1::RepositoryKey;
+use crate::gen::sdk::lekko::client::v1beta1::RepositoryKey as PublicRepositoryKey;
 use prost::{DecodeError, Message};
 use prost_types::Any;
 use tonic::metadata::{Ascii, MetadataValue};
-use crate::gen::cli::lekko::backend::v1beta1::RepositoryKey;
-use crate::gen::sdk::lekko::client::v1beta1::RepositoryKey as PublicRepositoryKey;
 
 // Key that the lekko api key is stored under in rpc headers.
 pub const APIKEY: &str = "apikey";
@@ -95,7 +95,17 @@ pub fn get_owner_and_repo(path: &str) -> Option<(String, String)> {
 
 #[cfg(test)]
 mod tests {
+    use tonic::metadata::AsciiMetadataValue;
+
+    use crate::gen::cli::lekko::backend::v1beta1::RegisterClientRequest;
+    use crate::gen::cli::lekko::backend::v1beta1::RepositoryKey;
     use crate::types::get_owner_and_repo;
+
+    use crate::types::add_api_key;
+    use crate::types::override_api_key;
+
+    use crate::types::ConnectionCredentials;
+    use crate::types::APIKEY;
 
     #[test]
     fn test_get_owner_and_repo_http() {
@@ -133,6 +143,78 @@ mod tests {
         match get_owner_and_repo("lekkodev-example") {
             None => (),
             _ => panic!("invalid url"),
+        }
+    }
+
+    #[test]
+    fn test_override_api_key_overrides_when_none() {
+        let rk = RepositoryKey {
+            owner_name: "".to_string(),
+            repo_name: "".to_string(),
+        };
+        let req = tonic::Request::new(RegisterClientRequest {
+            repo_key: Some(rk.clone()),
+            namespace_list: vec![],
+            initial_bootstrap_sha: "".to_string(),
+            sidecar_version: "".to_string(),
+        });
+
+        let cc = ConnectionCredentials {
+            session_key: "".to_string(),
+            repo_key: rk.clone(),
+            api_key: AsciiMetadataValue::from_static("some"),
+        };
+        let new_req = override_api_key(req, &Some(cc));
+        match new_req.metadata().get(APIKEY) {
+            Some(key) => assert_eq!(key, AsciiMetadataValue::from_static("some")),
+            None => panic!("failed to override api key"),
+        }
+    }
+
+    #[test]
+    fn test_override_api_key_leaves_when_set() {
+        let rk = RepositoryKey {
+            owner_name: "".to_string(),
+            repo_name: "".to_string(),
+        };
+        let req = add_api_key(
+            RegisterClientRequest {
+                repo_key: Some(rk.clone()),
+                namespace_list: vec![],
+                initial_bootstrap_sha: "".to_string(),
+                sidecar_version: "".to_string(),
+            },
+            AsciiMetadataValue::from_static("sdk"),
+        );
+
+        let cc = ConnectionCredentials {
+            session_key: "".to_string(),
+            repo_key: rk.clone(),
+            api_key: AsciiMetadataValue::from_static("some"),
+        };
+        let new_req = override_api_key(req, &Some(cc));
+        match new_req.metadata().get(APIKEY) {
+            Some(key) => assert_eq!(key, AsciiMetadataValue::from_static("sdk")),
+            None => panic!("api key was unset"),
+        }
+    }
+
+    #[test]
+    fn test_override_api_key_no_sidecar_apikey() {
+        let req = add_api_key(
+            RegisterClientRequest {
+                repo_key: None,
+                namespace_list: vec![],
+                initial_bootstrap_sha: "".to_string(),
+                sidecar_version: "".to_string(),
+            },
+            AsciiMetadataValue::from_static("sdk"),
+        );
+
+        let new_req = override_api_key(req, &None);
+        match new_req.metadata().get(APIKEY) {
+            Some(key) => assert_eq!(key, AsciiMetadataValue::from_static("sdk")),
+            None => panic!("api key was unset"),
         }
     }
 }

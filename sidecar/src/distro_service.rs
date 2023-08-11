@@ -25,6 +25,7 @@ pub struct Service {
     pub conn_creds: Option<ConnectionCredentials>,
     pub store: Arc<Store>,
     pub repo_key: RepositoryKey,
+    pub sidecar_version: String,
 }
 
 #[tonic::async_trait]
@@ -114,10 +115,16 @@ impl DistributionService for Service {
         if self.conn_creds.is_none() && request.metadata().get(APIKEY).is_none() {
             return Ok(tonic::Response::new(RegisterClientResponse::default()));
         }
+        let mut register_request = request.get_ref().clone();
+        register_request
+            .sidecar_version
+            .push_str(&self.sidecar_version);
+        let mut new_req = tonic::Request::new(register_request);
+        new_req.metadata_mut().clone_from(request.metadata());
         self.distro_client
             .clone()
             .to_owned()
-            .register_client(override_api_key(request, &self.conn_creds))
+            .register_client(override_api_key(new_req, &self.conn_creds))
             .await
     }
 
