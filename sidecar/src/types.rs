@@ -1,7 +1,6 @@
 use prost::{DecodeError, Message};
 use prost_types::Any;
 use tonic::metadata::{Ascii, MetadataValue};
-
 use crate::gen::cli::lekko::backend::v1beta1::RepositoryKey;
 use crate::gen::sdk::lekko::client::v1beta1::RepositoryKey as PublicRepositoryKey;
 
@@ -77,7 +76,7 @@ pub fn override_api_key<T: Message>(
     mut r: tonic::Request<T>,
     conn_creds_opt: &Option<ConnectionCredentials>,
 ) -> tonic::Request<T> {
-    if let (Some(_), Some(cc)) = (r.metadata().get(APIKEY), conn_creds_opt) {
+    if let Some(cc) = conn_creds_opt {
         r.metadata_mut().append(APIKEY, cc.api_key.clone());
     }
     r
