@@ -118,7 +118,7 @@ impl DistributionService for Service {
         let mut register_request = request.get_ref().clone();
         register_request
             .sidecar_version
-            .push_str(&self.sidecar_version);
+            .push_str(format!("-{}", self.sidecar_version.clone()).as_str());
         let mut new_req = tonic::Request::new(register_request);
         new_req.metadata_mut().clone_from(request.metadata());
         self.distro_client
