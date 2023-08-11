@@ -96,6 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     const VERSION: &str = env!("SIDECAR_VERSION");
     const GIT_COMMIT: &str = env!("SIDECAR_GIT_COMMIT");
+    let sidecar_version: String = format!("{VERSION}_{GIT_COMMIT}");
 
     log!(
         log::max_level().to_level().unwrap_or(log::Level::Info),
@@ -207,7 +208,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     RegisterClientRequest {
                         repo_key: Some(rk.clone()),
                         initial_bootstrap_sha: bootstrap_data.commit_sha.clone(),
-                        sidecar_version: format!("{VERSION}_{GIT_COMMIT}"),
+                        sidecar_version: sidecar_version.clone(),
                         namespace_list: vec![],
                     },
                     key.clone(),
@@ -260,6 +261,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             store,
             repo_key: rk,
             conn_creds,
+            sidecar_version,
         })
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
