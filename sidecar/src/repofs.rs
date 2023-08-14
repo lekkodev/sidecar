@@ -73,13 +73,13 @@ impl RepoFS {
     }
 
     pub fn load(&self) -> Result<GetRepositoryContentsResponse, Status> {
-        let commit_sha = self.git_commit_sha()?;
         let ns_names = self.find_namespace_names()?;
         let namespaces: Vec<Namespace> =
             match ns_names.iter().map(|ns| self.load_namespace(ns)).collect() {
                 Ok(nsr) => nsr,
                 Err(e) => return Err(e),
             };
+        let commit_sha = self.git_commit_sha()?;
         Ok(GetRepositoryContentsResponse {
             commit_sha,
             namespaces,
