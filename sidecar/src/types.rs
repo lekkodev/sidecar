@@ -161,7 +161,7 @@ mod tests {
 
         let cc = ConnectionCredentials {
             session_key: "".to_string(),
-            repo_key: rk.clone(),
+            repo_key: rk,
             api_key: AsciiMetadataValue::from_static("some"),
         };
         let new_req = override_api_key(req, &Some(cc));
@@ -189,7 +189,7 @@ mod tests {
 
         let cc = ConnectionCredentials {
             session_key: "".to_string(),
-            repo_key: rk.clone(),
+            repo_key: rk,
             api_key: AsciiMetadataValue::from_static("some"),
         };
         let new_req = override_api_key(req, &Some(cc));
