@@ -30,6 +30,10 @@ pub struct RepoFS {
     contents_path: String,
 }
 
+// If we are using git-sync, we assume that the repo contents
+// are in a subsirectory called 'contents'.
+const GIT_SYNC_CONTENTS_PATH: &str = "contents";
+
 // Check to see if the repo exists
 fn validate(repo_path: &str) -> Result<String, Status> {
     let git_dir_path = format!("{:}/.git", repo_path);
@@ -52,7 +56,7 @@ fn validate(repo_path: &str) -> Result<String, Status> {
     if Path::new(&default_root_yaml_path).exists() {
         return Ok(default_contents_path);
     }
-    let git_sync_contents_path = format!("{:}/contents", repo_path);
+    let git_sync_contents_path = format!("{:}/{GIT_SYNC_CONTENTS_PATH:}", repo_path);
     let git_sync_root_yaml_path = format!("{git_sync_contents_path:}/lekko.root.yaml");
     if !Path::new(&git_sync_root_yaml_path).exists() {
         return Err(Status::internal(format!(
@@ -232,12 +236,14 @@ impl RepoFS {
     pub fn git_commit_sha(&self) -> Result<String, Status> {
         let contents_path = Path::new(&self.contents_path);
         match contents_path.is_symlink() {
+            // Assume that we are using git-sync. The commit sha
+            // by convention is the name of the symlinked directory.
             true => match contents_path.read_link() {
                 Ok(dirname) => match dirname.to_str() {
                     Some(name) => Ok(String::from(name)),
-                    None => return Err(Status::internal("dir name empty")),
+                    None => Err(Status::internal("dir name empty")),
                 },
-                Err(e) => return Err(Status::internal(format!("failed to read symlink: {e:?}"))),
+                Err(e) => Err(Status::internal(format!("failed to read symlink: {e:?}"))),
             },
             false => {
                 let repo = match gix::open(Path::new(&self.repo_path)) {
@@ -249,7 +255,7 @@ impl RepoFS {
                     Err(e) => return Err(Status::internal(format!("failed rev parse: {e:?}"))),
                 };
                 Ok(commit_sha)
-            },
+            }
         }
     }
 }
