@@ -230,14 +230,26 @@ impl RepoFS {
 
     // Determines the git commit sha of HEAD.
     pub fn git_commit_sha(&self) -> Result<String, Status> {
-        let repo = match gix::open(Path::new(&self.repo_path)) {
-            Ok(r) => r,
-            Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
-        };
-        let commit_sha = match repo.head_id() {
-            Ok(id) => id.to_string(),
-            Err(e) => return Err(Status::internal(format!("failed rev parse: {e:?}"))),
-        };
-        Ok(commit_sha)
+        let contents_path = Path::new(&self.contents_path);
+        match contents_path.is_symlink() {
+            true => match contents_path.read_link() {
+                Ok(dirname) => match dirname.to_str() {
+                    Some(name) => Ok(String::from(name)),
+                    None => return Err(Status::internal("dir name empty")),
+                },
+                Err(e) => return Err(Status::internal(format!("failed to read symlink: {e:?}"))),
+            },
+            false => {
+                let repo = match gix::open(Path::new(&self.repo_path)) {
+                    Ok(r) => r,
+                    Err(e) => return Err(Status::internal(format!("failed to open repo: {e:?}"))),
+                };
+                let commit_sha = match repo.head_id() {
+                    Ok(id) => id.to_string(),
+                    Err(e) => return Err(Status::internal(format!("failed rev parse: {e:?}"))),
+                };
+                Ok(commit_sha)
+            },
+        }
     }
 }
