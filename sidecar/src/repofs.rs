@@ -177,6 +177,7 @@ impl RepoFS {
                                     )));
                                 }
                             },
+                            last_update_commit_sha: "".to_string(),
                         });
                         debug!(
                             "initialized {feature_name:} [{:?} bytes]: sha {sha:}",

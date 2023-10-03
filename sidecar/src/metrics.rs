@@ -77,6 +77,7 @@ impl Metrics {
             client_event_time: Some(Timestamp::from(SystemTime::now())),
             repo_key: Some(feature_params.rk.clone()),
             commit_sha: feature_data.commit_sha.clone(),
+            last_update_commit_sha: feature_data.last_update_commit_sha.clone(),
             feature_sha: feature_data.feature_sha.clone(),
             namespace_name: feature_params.namespace.to_owned(),
             feature_name: feature_data.feature.key.clone(),

@@ -59,6 +59,7 @@ struct FeatureKey {
 struct FeatureInfo {
     feature: Feature,
     version: String,
+    last_update_commit_sha: String,
 }
 
 type FeatureStore = HashMap<FeatureKey, FeatureInfo>;
@@ -72,6 +73,7 @@ pub struct FeatureData {
     pub commit_sha: String,
     pub feature_sha: String,
     pub feature: Feature,
+    pub last_update_commit_sha: String,
 }
 
 lazy_static! {
@@ -220,6 +222,7 @@ fn create_feature_store(namespaces: Vec<Namespace>) -> FeatureStore {
                 FeatureInfo {
                     feature: feature.feature.unwrap(),
                     version: feature.sha,
+                    last_update_commit_sha: feature.last_update_commit_sha,
                 },
             );
         })
@@ -307,6 +310,7 @@ impl Store {
                 feature: feature.feature.clone(),
                 commit_sha: repo_version.clone(),
                 feature_sha: feature.version.clone(),
+                last_update_commit_sha: feature.last_update_commit_sha.clone(),
             });
     }
 
