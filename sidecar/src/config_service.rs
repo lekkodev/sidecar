@@ -32,13 +32,18 @@ trait SharedRequest {
     fn metadata(&self) -> &MetadataMap;
 }
 
+struct ConfigValue {
+    value: Any,
+    last_update_commit_sha: String,
+}
+
 impl Service {
     fn get_value_local(
         &self,
         feature: FeatureRequestParams,
         context: &HashMap<String, Value>,
         requested_type: FeatureType,
-    ) -> Result<Any, tonic::Status> {
+    ) -> Result<ConfigValue, tonic::Status> {
         let feature_data = self
             .store
             .get_feature_local(feature.clone())
@@ -59,7 +64,10 @@ impl Service {
         if let Some(m) = self.metrics.as_ref() {
             m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
         }
-        Ok(eval_result.0)
+        Ok(ConfigValue {
+            value: eval_result.0,
+            last_update_commit_sha: feature_data.last_update_commit_sha,
+        })
     }
 }
 
@@ -109,8 +117,9 @@ impl ConfigurationService for Service {
         let result = &self.get_value_local(params, &inner.context, FeatureType::Bool)?;
 
         Ok(inner.insert_log_fields(Response::new(GetBoolValueResponse {
-            value: types::from_any::<bool>(result)
+            value: types::from_any::<bool>(&result.value)
                 .map_err(|e| tonic::Status::internal(e.to_string()))?,
+            last_update_commit_sha: result.last_update_commit_sha.clone(),
         })))
     }
 
@@ -129,13 +138,13 @@ impl ConfigurationService for Service {
             namespace: inner.namespace.clone(),
             feature: inner.key.clone(),
         };
-        let i = types::from_any::<i64>(&self.get_value_local(
-            params,
-            &inner.context,
-            FeatureType::Int,
-        )?)
-        .map_err(|e| tonic::Status::internal(e.to_string()))?;
-        Ok(inner.insert_log_fields(Response::new(GetIntValueResponse { value: i })))
+        let value = &self.get_value_local(params, &inner.context, FeatureType::Int)?;
+        let i = types::from_any::<i64>(&value.value)
+            .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(inner.insert_log_fields(Response::new(GetIntValueResponse {
+            value: i,
+            last_update_commit_sha: value.last_update_commit_sha.clone(),
+        })))
     }
 
     async fn get_float_value(
@@ -154,13 +163,15 @@ impl ConfigurationService for Service {
             feature: inner.key.clone(),
         };
 
-        let f = types::from_any::<f64>(&self.get_value_local(
-            params,
-            &inner.context,
-            FeatureType::Float,
-        )?)
-        .map_err(|e| tonic::Status::internal(e.to_string()))?;
-        Ok(inner.insert_log_fields(Response::new(GetFloatValueResponse { value: f })))
+        let result = &self.get_value_local(params, &inner.context, FeatureType::Float)?;
+        let f = types::from_any::<f64>(&result.value)
+            .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(
+            inner.insert_log_fields(Response::new(GetFloatValueResponse {
+                value: f,
+                last_update_commit_sha: result.last_update_commit_sha.clone(),
+            })),
+        )
     }
 
     async fn get_string_value(
@@ -179,13 +190,15 @@ impl ConfigurationService for Service {
             feature: inner.key.clone(),
         };
 
-        let s = types::from_any::<String>(&self.get_value_local(
-            params,
-            &inner.context,
-            FeatureType::String,
-        )?)
-        .map_err(|e| tonic::Status::internal(e.to_string()))?;
-        Ok(inner.insert_log_fields(Response::new(GetStringValueResponse { value: s })))
+        let result = &self.get_value_local(params, &inner.context, FeatureType::String)?;
+        let s = types::from_any::<String>(&result.value)
+            .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(
+            inner.insert_log_fields(Response::new(GetStringValueResponse {
+                value: s,
+                last_update_commit_sha: result.last_update_commit_sha.clone(),
+            })),
+        )
     }
 
     async fn get_proto_value(
@@ -204,14 +217,15 @@ impl ConfigurationService for Service {
             feature: inner.key.clone(),
         };
 
-        let any = self.get_value_local(params, &inner.context, FeatureType::Proto)?;
+        let result = self.get_value_local(params, &inner.context, FeatureType::Proto)?;
         Ok(
             inner.insert_log_fields(Response::new(GetProtoValueResponse {
-                value: Some(any.clone()),
+                value: Some(result.value.clone()),
                 value_v2: Some(LekkoAny {
-                    type_url: any.clone().type_url,
-                    value: any.value,
+                    type_url: result.value.clone().type_url,
+                    value: result.value.value,
                 }),
+                last_update_commit_sha: result.last_update_commit_sha,
             })),
         )
     }
@@ -221,27 +235,27 @@ impl ConfigurationService for Service {
         request: Request<GetJsonValueRequest>,
     ) -> Result<tonic::Response<GetJsonValueResponse>, tonic::Status> {
         let inner = request.into_inner();
-        let v = types::from_any::<prost_types::Value>(
-            &self.get_value_local(
-                FeatureRequestParams {
-                    rk: convert_repo_key(
-                        inner
-                            .repo_key
-                            .as_ref()
-                            .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
-                    ),
-                    namespace: inner.namespace.clone(),
-                    feature: inner.key.clone(),
-                },
-                &inner.context,
-                FeatureType::Json,
-            )?,
-        )
-        .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        let result = &self.get_value_local(
+            FeatureRequestParams {
+                rk: convert_repo_key(
+                    inner
+                        .repo_key
+                        .as_ref()
+                        .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+                ),
+                namespace: inner.namespace.clone(),
+                feature: inner.key.clone(),
+            },
+            &inner.context,
+            FeatureType::Json,
+        )?;
+        let v = types::from_any::<prost_types::Value>(&result.value)
+            .map_err(|e| tonic::Status::internal(e.to_string()))?;
         Ok(inner.insert_log_fields(Response::new(GetJsonValueResponse {
             value: serde_json::to_vec(&ValueWrapper(&v)).map_err(|e| {
                 Status::internal("failure serializing json ".to_owned() + &e.to_string())
             })?,
+            last_update_commit_sha: result.last_update_commit_sha.clone(),
         })))
     }
 }
