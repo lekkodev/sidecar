@@ -1,0 +1,22 @@
+[package]
+name = "plekko"
+version = "0.0.1"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+sidecar = { path = "../sidecar" }
+clap = { version = "4.0.29", features = ["derive"] }
+tokio = { version="1.0", features=["rt", "rt-multi-thread", "macros", "time", "sync", "signal"] }
+humantime = "2"
+tonic = { version= "0.9", features=["tls", "gzip"]}
+hyper = { version="0.14", features=["full"] }
+hyper-rustls = { version="0.23", features=["webpki-roots", "http2"] }
+log = "0.4"
+metrics = "0.21.0"
+prost = { version="0.11", features=["prost-derive"] }
+prost-types = "0.11"
+moka = { version = "0.12.1", features = ["future"] }
+tower-http = { version="0.4", features=["trace"] }
+tracing = "0.1"

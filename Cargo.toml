@@ -1,4 +1,7 @@
 [workspace]
 
-members = ["sidecar","lekkod"]
-default-members = ["sidecar","lekkod"]
+members = ["sidecar","lekkod","plekko"]
+default-members = ["sidecar","lekkod","plekko"]
+
+[profile.release]
+debug = true

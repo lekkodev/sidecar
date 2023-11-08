@@ -21,6 +21,8 @@ use crate::{
 
 // This is the main rpc entrypoint into the sidecar. All host pods will communicate with the
 // sidecar via this Service, using the language-native SDK.
+// Idea - add the API key to this and do a constant time compare with it each request
+// Backup idea - add ability to check the keys against the server and keep track of valid keys -- way better approach
 pub struct Service {
     pub store: Arc<Store>,
     pub mode: Mode,
@@ -95,6 +97,11 @@ impl ConfigurationService for Service {
         &self,
         request: Request<GetBoolValueRequest>,
     ) -> Result<tonic::Response<GetBoolValueResponse>, tonic::Status> {
+        // TODO replace with interceptor
+        if request.metadata().get("APIKEY").is_none() {
+            return Err(Status::invalid_argument(format!("APIKEY missing",)));
+        }
+
         let inner = request.into_inner();
         let params = FeatureRequestParams {
             rk: convert_repo_key(
