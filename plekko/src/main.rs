@@ -41,6 +41,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tonic::body::BoxBody;
 use tonic::codegen::CompressionEncoding;
+use tonic::codegen::InterceptedService;
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::{Server, Uri};
 use tonic::{metadata::MetadataMap, Request, Response, Status};
@@ -110,12 +111,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cache: Cache<StoreKey, Arc<Store>> = Cache::new(10_000);
 
-    let proxy_config_service = ConfigurationServiceServer::new(ProxyConfigurationService {
-        cache: cache,
-        dist_client: dist_client,
-    })
-    .send_compressed(CompressionEncoding::Gzip)
-    .accept_compressed(CompressionEncoding::Gzip);
+    let proxy_config_service = InterceptedService::new(
+        ConfigurationServiceServer::new(ProxyConfigurationService {
+            cache: cache,
+            dist_client: dist_client,
+        })
+        .send_compressed(CompressionEncoding::Gzip)
+        .accept_compressed(CompressionEncoding::Gzip),
+        intercept,
+    );
 
     Server::builder()
         .add_service(proxy_config_service)
@@ -123,6 +127,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     Ok(())
+}
+
+fn intercept(mut request: Request<>) -> Result<Request<>, Status> {
+    println!("Intercepting request: {:?}", request);
+        let api_key = request
+            .metadata()
+            .get("APIKEY")
+            .ok_or_else(|| Status::invalid_argument("no api key provided"))?
+            .clone();
+        let inner = request.into_inner();
+        let store_key = StoreKey {
+            owner_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .owner_name,
+            ),
+            repo_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .repo_name,
+            ),
+
+            api_key: api_key,
+        };
+    Ok(request)
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
@@ -156,7 +189,7 @@ impl ProxyConfigurationService {
             .clone()
             .get_repository_contents(add_api_key(request, key.api_key.clone()))
             .await
-            .unwrap_or_else(|e| panic!("error performing initial fetch: {:?}", e))
+            .unwrap_or_else(|e| panic!("error performing initial fetch: {:?}", e)) // TODO
             .into_inner();
 
         let conn_creds = {
@@ -181,7 +214,7 @@ impl ProxyConfigurationService {
             match res {
                 Ok(conn) => Some(conn),
                 Err(err) => {
-                    panic!("error connecting to remote: {:?}", err);
+                    panic!("error connecting to remote: {:?}", err); // TODO
                 }
             }
         };

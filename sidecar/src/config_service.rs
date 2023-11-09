@@ -97,11 +97,6 @@ impl ConfigurationService for Service {
         &self,
         request: Request<GetBoolValueRequest>,
     ) -> Result<tonic::Response<GetBoolValueResponse>, tonic::Status> {
-        // TODO replace with interceptor
-        if request.metadata().get("APIKEY").is_none() {
-            return Err(Status::invalid_argument(format!("APIKEY missing",)));
-        }
-
         let inner = request.into_inner();
         let params = FeatureRequestParams {
             rk: convert_repo_key(
