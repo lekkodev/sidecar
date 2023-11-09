@@ -1,6 +1,7 @@
 use clap::Parser;
 use hyper::client::HttpConnector;
 use log::log;
+use sidecar::gen::cli::lekko::backend::v1beta1::distribution_service_server::DistributionServiceServer;
 use std::net::SocketAddr;
 use tokio::signal::unix::SignalKind;
 use tokio::time::sleep;
@@ -129,8 +130,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cache: Cache<StoreKey, Arc<Store>> = Cache::new(10_000);
 
     let proxy_config_service = ConfigurationServiceServer::new(ProxyConfigurationService {
-        cache: cache,
-        dist_client: dist_client,
+        cache: cache.clone(),
+        dist_client: dist_client.clone(),
+    })
+    .send_compressed(CompressionEncoding::Gzip)
+    .accept_compressed(CompressionEncoding::Gzip);
+    let proxy_dist_service = DistributionServiceServer::new(ProxyDistributionService {
+        cache: cache.clone(),
+        dist_client: dist_client.clone(),
     })
     .send_compressed(CompressionEncoding::Gzip)
     .accept_compressed(CompressionEncoding::Gzip);
@@ -138,6 +145,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
         .set_serving::<ConfigurationServiceServer<ProxyConfigurationService>>()
+        .await;
+    health_reporter
+        .set_serving::<DistributionServiceServer<ProxyDistributionService>>()
         .await;
 
     Server::builder()
@@ -167,6 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
         )
         .add_service(proxy_config_service)
+        .add_service(proxy_dist_service)
         .add_service(health_service)
         .serve_with_shutdown(addr, async move {
             tokio::signal::unix::signal(SignalKind::terminate())
