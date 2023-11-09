@@ -2152,6 +2152,7 @@ dependencies = [
  "sidecar",
  "tokio",
  "tonic",
+ "tonic-health",
  "tower-http",
  "tracing",
 ]

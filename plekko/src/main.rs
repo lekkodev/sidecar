@@ -1,5 +1,9 @@
 use clap::Parser;
 use hyper::client::HttpConnector;
+use log::log;
+use std::net::SocketAddr;
+use tokio::signal::unix::SignalKind;
+use tokio::time::sleep;
 
 use hyper_rustls::HttpsConnector;
 use hyper_rustls::HttpsConnectorBuilder;
@@ -7,12 +11,11 @@ use hyper_rustls::HttpsConnectorBuilder;
 use metrics::counter;
 use moka::future::Cache;
 
-use prost_types::{value::Kind};
+use prost_types::value::Kind;
 use sidecar::evaluate::evaluator::evaluate;
 use sidecar::evaluate::evaluator::EvalContext;
 use sidecar::gen::cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 use sidecar::gen::cli::lekko::backend::v1beta1::GetRepositoryContentsRequest;
-
 
 use sidecar::gen::cli::lekko::backend::v1beta1::RegisterClientRequest;
 use sidecar::gen::cli::lekko::backend::v1beta1::RepositoryKey;
@@ -36,7 +39,6 @@ use sidecar::types::ConnectionCredentials;
 use sidecar::types::FeatureRequestParams;
 use sidecar::types::Mode;
 
-
 use std::sync::Arc;
 use std::time::Duration;
 use tonic::body::BoxBody;
@@ -46,8 +48,14 @@ use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::{Server, Uri};
 use tonic::{Request, Response, Status};
 
-
-
+use hyper::Body;
+use tower_http::trace::DefaultMakeSpan;
+use tower_http::trace::DefaultOnFailure;
+use tower_http::trace::TraceLayer;
+use tower_http::LatencyUnit;
+use tracing::info;
+use tracing::Level;
+use tracing::Span;
 // Struct containing all the cmd-line args we accept
 #[derive(Parser)]
 #[clap(author="Lekko", version="0.0.1", about, long_about = None)]
@@ -55,6 +63,10 @@ struct Args {
     #[arg(short, long, default_value_t=String::from("https://prod.api.lekko.dev"))]
     /// Address to communicate with lekko backend.
     lekko_addr: String,
+
+    #[arg(long, default_value_t=String::from("0.0.0.0:50051"))]
+    /// Address to bind to on current host.
+    bind_addr: String,
 
     #[arg(long, default_value_t=String::from("0.0.0.0:9000"))]
     /// Address to bind to on current host.
@@ -75,7 +87,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     logging::init();
 
     let args = Args::parse();
-
+    let addr = match args.bind_addr.parse::<SocketAddr>() {
+        Err(err) => panic!("parsing bind_addr {} failed: {err:?}", args.bind_addr),
+        Ok(a) => a,
+    };
     let lekko_addr = match args.lekko_addr.parse::<Uri>() {
         Err(err) => panic!("parsing lekko_addr {} failed: {err:?}", args.lekko_addr),
         Ok(a) => a,
@@ -108,17 +123,64 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cache: Cache<StoreKey, Arc<Store>> = Cache::new(10_000);
 
-    let proxy_config_service = 
-        ConfigurationServiceServer::new(ProxyConfigurationService {
-            cache: cache,
-            dist_client: dist_client,
-        })
-        .send_compressed(CompressionEncoding::Gzip)
-        .accept_compressed(CompressionEncoding::Gzip);
+    let proxy_config_service = ConfigurationServiceServer::new(ProxyConfigurationService {
+        cache: cache,
+        dist_client: dist_client,
+    })
+    .send_compressed(CompressionEncoding::Gzip)
+    .accept_compressed(CompressionEncoding::Gzip);
+
+    let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<ConfigurationServiceServer<ProxyConfigurationService>>()
+        .await;
 
     Server::builder()
+        .layer(
+            TraceLayer::new_for_grpc()
+                .make_span_with(DefaultMakeSpan::new())
+                .on_request(|request: &hyper::http::Request<Body>, _span: &Span| {
+                    let method = logging::http_uri_to_method(request.uri().to_string());
+                    info!("request {} {}", method.service, method.method);
+                })
+                .on_response(
+                    |response: &hyper::http::Response<_>,
+                     latency: std::time::Duration,
+                     _span: &Span| {
+                        let extra_text = logging::get_trace_string(response.extensions());
+                        info!(
+                            "response {} μs {}",
+                            latency.as_micros(),
+                            extra_text.unwrap_or_default(),
+                        );
+                    },
+                )
+                .on_failure(
+                    DefaultOnFailure::new()
+                        .level(Level::ERROR)
+                        .latency_unit(LatencyUnit::Millis),
+                ),
+        )
         .add_service(proxy_config_service)
-        .serve("[::1]:56651".parse().unwrap())
+        .add_service(health_service)
+        .serve_with_shutdown(addr, async move {
+            tokio::signal::unix::signal(SignalKind::terminate())
+                .unwrap()
+                .recv()
+                .await;
+            // wait on signal from deregister
+            log!(
+                log::max_level().to_level().unwrap_or(log::Level::Warn),
+                "got sigterm, waiting for shutdown duration before gracefully shutting down"
+            );
+            // TODO make configurable.
+            sleep(Duration::from_secs(5)).await;
+            log!(
+                log::max_level().to_level().unwrap_or(log::Level::Warn),
+                "got deregister, gracefully shutting down"
+            );
+            // shutdown metrics
+        })
         .await?;
 
     Ok(())
@@ -348,8 +410,9 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
-		let value = types::from_any::<i64>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
-		Ok(inner.insert_log_fields(Response::new(GetIntValueResponse { value: value})))
+        let value =
+            types::from_any::<i64>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(inner.insert_log_fields(Response::new(GetIntValueResponse { value: value })))
     }
 
     async fn get_float_value(
@@ -416,8 +479,9 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
-		let value = types::from_any::<f64>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
-		Ok(inner.insert_log_fields(Response::new(GetFloatValueResponse { value: value})))
+        let value =
+            types::from_any::<f64>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(inner.insert_log_fields(Response::new(GetFloatValueResponse { value: value })))
     }
 
     async fn get_string_value(
@@ -484,8 +548,9 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
-		let value = types::from_any::<String>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
-		Ok(inner.insert_log_fields(Response::new(GetStringValueResponse { value: value})))
+        let value = types::from_any::<String>(&result)
+            .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(inner.insert_log_fields(Response::new(GetStringValueResponse { value: value })))
     }
 
     async fn get_proto_value(
@@ -627,7 +692,8 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
-		let value = types::from_any::<prost_types::Value>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
+        let value = types::from_any::<prost_types::Value>(&result)
+            .map_err(|e| tonic::Status::internal(e.to_string()))?;
         Ok(inner.insert_log_fields(Response::new(GetJsonValueResponse {
             value: serde_json::to_vec(&ValueWrapper(&value)).map_err(|e| {
                 Status::internal("failure serializing json ".to_owned() + &e.to_string())
