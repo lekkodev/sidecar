@@ -1,19 +1,19 @@
 use clap::Parser;
 use hyper::client::HttpConnector;
-use hyper::Body;
+
 use hyper_rustls::HttpsConnector;
 use hyper_rustls::HttpsConnectorBuilder;
-use log::log;
+
 use metrics::counter;
 use moka::future::Cache;
-use prost::Message;
-use prost_types::{value::Kind, Any};
+
+use prost_types::{value::Kind};
 use sidecar::evaluate::evaluator::evaluate;
 use sidecar::evaluate::evaluator::EvalContext;
 use sidecar::gen::cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
 use sidecar::gen::cli::lekko::backend::v1beta1::GetRepositoryContentsRequest;
-use sidecar::gen::cli::lekko::backend::v1beta1::GetRepositoryContentsResponse;
-use sidecar::gen::cli::lekko::backend::v1beta1::Namespace;
+
+
 use sidecar::gen::cli::lekko::backend::v1beta1::RegisterClientRequest;
 use sidecar::gen::cli::lekko::backend::v1beta1::RepositoryKey;
 use sidecar::gen::cli::lekko::feature::v1beta1::FeatureType;
@@ -23,7 +23,7 @@ use sidecar::gen::sdk::lekko::client::v1beta1::{
     DeregisterResponse, GetBoolValueRequest, GetBoolValueResponse, GetFloatValueRequest,
     GetFloatValueResponse, GetIntValueRequest, GetIntValueResponse, GetJsonValueRequest,
     GetJsonValueResponse, GetProtoValueRequest, GetProtoValueResponse, GetStringValueRequest,
-    GetStringValueResponse, RegisterRequest, RegisterResponse, Value,
+    GetStringValueResponse, RegisterRequest, RegisterResponse,
 };
 use sidecar::logging;
 use sidecar::logging::InsertLogFields;
@@ -35,21 +35,18 @@ use sidecar::types::convert_repo_key;
 use sidecar::types::ConnectionCredentials;
 use sidecar::types::FeatureRequestParams;
 use sidecar::types::Mode;
-use std::collections::HashMap;
-use std::path::PathBuf;
+
+
 use std::sync::Arc;
 use std::time::Duration;
 use tonic::body::BoxBody;
 use tonic::codegen::CompressionEncoding;
-use tonic::codegen::InterceptedService;
+
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::{Server, Uri};
-use tonic::{metadata::MetadataMap, Request, Response, Status};
-use tower_http::{
-    trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
-    LatencyUnit,
-};
-use tracing::{info, Level, Span};
+use tonic::{Request, Response, Status};
+
+
 
 // Struct containing all the cmd-line args we accept
 #[derive(Parser)]
@@ -204,7 +201,7 @@ impl ProxyConfigurationService {
 impl ConfigurationService for ProxyConfigurationService {
     async fn register(
         &self,
-        request: Request<RegisterRequest>,
+        _request: Request<RegisterRequest>,
     ) -> Result<tonic::Response<RegisterResponse>, tonic::Status> {
         Ok(Response::new(RegisterResponse::default()))
     }
