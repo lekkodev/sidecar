@@ -2147,6 +2147,8 @@ dependencies = [
  "moka",
  "prost",
  "prost-types",
+ "serde",
+ "serde_json",
  "sidecar",
  "tokio",
  "tonic",

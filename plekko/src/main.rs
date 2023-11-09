@@ -111,15 +111,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cache: Cache<StoreKey, Arc<Store>> = Cache::new(10_000);
 
-    let proxy_config_service = InterceptedService::new(
+    let proxy_config_service = 
         ConfigurationServiceServer::new(ProxyConfigurationService {
             cache: cache,
             dist_client: dist_client,
         })
         .send_compressed(CompressionEncoding::Gzip)
-        .accept_compressed(CompressionEncoding::Gzip),
-        intercept,
-    );
+        .accept_compressed(CompressionEncoding::Gzip);
 
     Server::builder()
         .add_service(proxy_config_service)
@@ -127,35 +125,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     Ok(())
-}
-
-fn intercept(mut request: Request<>) -> Result<Request<>, Status> {
-    println!("Intercepting request: {:?}", request);
-        let api_key = request
-            .metadata()
-            .get("APIKEY")
-            .ok_or_else(|| Status::invalid_argument("no api key provided"))?
-            .clone();
-        let inner = request.into_inner();
-        let store_key = StoreKey {
-            owner_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .owner_name,
-            ),
-            repo_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .repo_name,
-            ),
-
-            api_key: api_key,
-        };
-    Ok(request)
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
@@ -322,34 +291,389 @@ impl ConfigurationService for ProxyConfigurationService {
         &self,
         request: Request<GetIntValueRequest>,
     ) -> Result<tonic::Response<GetIntValueResponse>, tonic::Status> {
-        Ok(Response::new(GetIntValueResponse::default()))
+        let requested_type = FeatureType::Int;
+        let api_key = request
+            .metadata()
+            .get("APIKEY")
+            .ok_or_else(|| Status::invalid_argument("no api key provided"))?
+            .clone();
+        let inner = request.into_inner();
+        let store_key = StoreKey {
+            owner_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .owner_name,
+            ),
+            repo_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .repo_name,
+            ),
+
+            api_key: api_key,
+        };
+        let store = self
+            .cache
+            .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
+            .await
+            .unwrap(); // TODO - not sure how error prop works in rust
+
+        let context = &inner.context;
+        let feature = FeatureRequestParams {
+            rk: convert_repo_key(
+                inner
+                    .repo_key
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+            ),
+            namespace: inner.namespace.clone(),
+            feature: inner.key.clone(),
+        };
+
+        let feature_data = store
+            .get_feature_local(feature.clone())
+            .ok_or_else(|| Status::invalid_argument("feature not found"))?;
+        if feature_data.feature.r#type() != FeatureType::Unspecified && // backwards compatibility
+            feature_data.feature.r#type() != requested_type
+        {
+            return Err(tonic::Status::invalid_argument(format!(
+                "type mismatch: requested feature is not of type {:?}",
+                requested_type.as_str_name()
+            )));
+        }
+        let eval_context = EvalContext {
+            namespace: feature.namespace.to_owned(),
+            feature_name: feature_data.feature.key.to_owned(),
+        };
+        let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
+        let result = eval_result.0;
+		let value = types::from_any::<i64>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
+		Ok(inner.insert_log_fields(Response::new(GetIntValueResponse { value: value})))
     }
 
     async fn get_float_value(
         &self,
         request: Request<GetFloatValueRequest>,
     ) -> Result<tonic::Response<GetFloatValueResponse>, tonic::Status> {
-        Ok(Response::new(GetFloatValueResponse::default()))
+        let requested_type = FeatureType::Float;
+        let api_key = request
+            .metadata()
+            .get("APIKEY")
+            .ok_or_else(|| Status::invalid_argument("no api key provided"))?
+            .clone();
+        let inner = request.into_inner();
+        let store_key = StoreKey {
+            owner_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .owner_name,
+            ),
+            repo_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .repo_name,
+            ),
+
+            api_key: api_key,
+        };
+        let store = self
+            .cache
+            .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
+            .await
+            .unwrap(); // TODO - not sure how error prop works in rust
+
+        let context = &inner.context;
+        let feature = FeatureRequestParams {
+            rk: convert_repo_key(
+                inner
+                    .repo_key
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+            ),
+            namespace: inner.namespace.clone(),
+            feature: inner.key.clone(),
+        };
+
+        let feature_data = store
+            .get_feature_local(feature.clone())
+            .ok_or_else(|| Status::invalid_argument("feature not found"))?;
+        if feature_data.feature.r#type() != FeatureType::Unspecified && // backwards compatibility
+            feature_data.feature.r#type() != requested_type
+        {
+            return Err(tonic::Status::invalid_argument(format!(
+                "type mismatch: requested feature is not of type {:?}",
+                requested_type.as_str_name()
+            )));
+        }
+        let eval_context = EvalContext {
+            namespace: feature.namespace.to_owned(),
+            feature_name: feature_data.feature.key.to_owned(),
+        };
+        let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
+        let result = eval_result.0;
+		let value = types::from_any::<f64>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
+		Ok(inner.insert_log_fields(Response::new(GetFloatValueResponse { value: value})))
     }
 
     async fn get_string_value(
         &self,
         request: Request<GetStringValueRequest>,
     ) -> Result<tonic::Response<GetStringValueResponse>, tonic::Status> {
-        Ok(Response::new(GetStringValueResponse::default()))
+        let requested_type = FeatureType::String;
+        let api_key = request
+            .metadata()
+            .get("APIKEY")
+            .ok_or_else(|| Status::invalid_argument("no api key provided"))?
+            .clone();
+        let inner = request.into_inner();
+        let store_key = StoreKey {
+            owner_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .owner_name,
+            ),
+            repo_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .repo_name,
+            ),
+
+            api_key: api_key,
+        };
+        let store = self
+            .cache
+            .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
+            .await
+            .unwrap(); // TODO - not sure how error prop works in rust
+
+        let context = &inner.context;
+        let feature = FeatureRequestParams {
+            rk: convert_repo_key(
+                inner
+                    .repo_key
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+            ),
+            namespace: inner.namespace.clone(),
+            feature: inner.key.clone(),
+        };
+
+        let feature_data = store
+            .get_feature_local(feature.clone())
+            .ok_or_else(|| Status::invalid_argument("feature not found"))?;
+        if feature_data.feature.r#type() != FeatureType::Unspecified && // backwards compatibility
+            feature_data.feature.r#type() != requested_type
+        {
+            return Err(tonic::Status::invalid_argument(format!(
+                "type mismatch: requested feature is not of type {:?}",
+                requested_type.as_str_name()
+            )));
+        }
+        let eval_context = EvalContext {
+            namespace: feature.namespace.to_owned(),
+            feature_name: feature_data.feature.key.to_owned(),
+        };
+        let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
+        let result = eval_result.0;
+		let value = types::from_any::<String>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
+		Ok(inner.insert_log_fields(Response::new(GetStringValueResponse { value: value})))
     }
 
     async fn get_proto_value(
         &self,
         request: Request<GetProtoValueRequest>,
     ) -> Result<tonic::Response<GetProtoValueResponse>, tonic::Status> {
-        Ok(Response::new(GetProtoValueResponse::default()))
+        let requested_type = FeatureType::Proto;
+        let api_key = request
+            .metadata()
+            .get("APIKEY")
+            .ok_or_else(|| Status::invalid_argument("no api key provided"))?
+            .clone();
+        let inner = request.into_inner();
+        let store_key = StoreKey {
+            owner_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .owner_name,
+            ),
+            repo_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .repo_name,
+            ),
+
+            api_key: api_key,
+        };
+        let store = self
+            .cache
+            .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
+            .await
+            .unwrap(); // TODO - not sure how error prop works in rust
+
+        let context = &inner.context;
+        let feature = FeatureRequestParams {
+            rk: convert_repo_key(
+                inner
+                    .repo_key
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+            ),
+            namespace: inner.namespace.clone(),
+            feature: inner.key.clone(),
+        };
+
+        let feature_data = store
+            .get_feature_local(feature.clone())
+            .ok_or_else(|| Status::invalid_argument("feature not found"))?;
+        if feature_data.feature.r#type() != FeatureType::Unspecified && // backwards compatibility
+            feature_data.feature.r#type() != requested_type
+        {
+            return Err(tonic::Status::invalid_argument(format!(
+                "type mismatch: requested feature is not of type {:?}",
+                requested_type.as_str_name()
+            )));
+        }
+        let eval_context = EvalContext {
+            namespace: feature.namespace.to_owned(),
+            feature_name: feature_data.feature.key.to_owned(),
+        };
+        let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
+        let result = eval_result.0;
+        Ok(
+            inner.insert_log_fields(Response::new(GetProtoValueResponse {
+                value: Some(result.clone()),
+                value_v2: Some(LekkoAny {
+                    type_url: result.clone().type_url,
+                    value: result.value,
+                }),
+            })),
+        )
     }
 
     async fn get_json_value(
         &self,
         request: Request<GetJsonValueRequest>,
     ) -> Result<tonic::Response<GetJsonValueResponse>, tonic::Status> {
-        Ok(Response::new(GetJsonValueResponse::default()))
+        let requested_type = FeatureType::Json;
+        let api_key = request
+            .metadata()
+            .get("APIKEY")
+            .ok_or_else(|| Status::invalid_argument("no api key provided"))?
+            .clone();
+        let inner = request.into_inner();
+        let store_key = StoreKey {
+            owner_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .owner_name,
+            ),
+            repo_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .repo_name,
+            ),
+
+            api_key: api_key,
+        };
+        let store = self
+            .cache
+            .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
+            .await
+            .unwrap(); // TODO - not sure how error prop works in rust
+
+        let context = &inner.context;
+        let feature = FeatureRequestParams {
+            rk: convert_repo_key(
+                inner
+                    .repo_key
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+            ),
+            namespace: inner.namespace.clone(),
+            feature: inner.key.clone(),
+        };
+
+        let feature_data = store
+            .get_feature_local(feature.clone())
+            .ok_or_else(|| Status::invalid_argument("feature not found"))?;
+        if feature_data.feature.r#type() != FeatureType::Unspecified && // backwards compatibility
+            feature_data.feature.r#type() != requested_type
+        {
+            return Err(tonic::Status::invalid_argument(format!(
+                "type mismatch: requested feature is not of type {:?}",
+                requested_type.as_str_name()
+            )));
+        }
+        let eval_context = EvalContext {
+            namespace: feature.namespace.to_owned(),
+            feature_name: feature_data.feature.key.to_owned(),
+        };
+        let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
+        let result = eval_result.0;
+		let value = types::from_any::<prost_types::Value>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
+        Ok(inner.insert_log_fields(Response::new(GetJsonValueResponse {
+            value: serde_json::to_vec(&ValueWrapper(&value)).map_err(|e| {
+                Status::internal("failure serializing json ".to_owned() + &e.to_string())
+            })?,
+        })))
     }
+}
+
+fn serialize_value<S>(value: &prost_types::Value, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    match &value.kind {
+        None | Some(Kind::NullValue(_)) => serializer.serialize_none(),
+        Some(Kind::NumberValue(f)) => serializer.serialize_f64(*f),
+        Some(Kind::StringValue(s)) => serializer.serialize_str(s),
+        Some(Kind::BoolValue(b)) => serializer.serialize_bool(*b),
+        Some(Kind::StructValue(st)) => serialize_struct(st, serializer),
+        Some(Kind::ListValue(l)) => serialize_list(l, serializer),
+    }
+}
+
+pub struct ValueWrapper<'a>(&'a prost_types::Value);
+
+impl<'a> serde::Serialize for ValueWrapper<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ::serde::Serializer,
+    {
+        serialize_value(self.0, serializer)
+    }
+}
+
+fn serialize_struct<S>(st: &prost_types::Struct, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    serializer.collect_map(st.fields.iter().map(|(k, v)| (k, ValueWrapper(v))))
+}
+
+fn serialize_list<S>(st: &prost_types::ListValue, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    serializer.collect_seq(st.values.iter().map(ValueWrapper))
 }
