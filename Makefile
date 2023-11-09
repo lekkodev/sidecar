@@ -58,7 +58,7 @@ all: build test format lint
 ## Docker
 
 # Settable
-DOCKER_BINS := sidecar
+DOCKER_BINS := sidecar plekko
 DOCKER_ORG := lekko
 DOCKER_REMOTE := 525250420071.dkr.ecr.us-east-1.amazonaws.com
 

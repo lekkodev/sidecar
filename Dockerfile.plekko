@@ -43,18 +43,20 @@ RUN rustup target add $(cat /rust_target.txt)
 
 RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) SIDECAR_VERSION=$SIDECAR_VERSION SIDECAR_GIT_COMMIT=$SIDECAR_GIT_COMMIT cargo build -p sidecar --release --target $(cat /rust_target.txt)
 COPY sidecar/src /workspace/sidecar/src
+COPY plekko/src /workspace/plekko/src
 
 # prevents a cached lib.rs compile
 RUN touch /workspace/sidecar/src/lib.rs
+RUN touch /workspace/plekko/src/lib.rs
 
 # This is the actual application build.
-RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) SIDECAR_VERSION=$SIDECAR_VERSION SIDECAR_GIT_COMMIT=$SIDECAR_GIT_COMMIT cargo build -p sidecar --release --target $(cat /rust_target.txt)
+RUN RUSTFLAGS=$(cat /rust_flags.txt) TARGET_CC=$(cat /cc.txt) TARGET_AR=$(cat /ar.txt) SIDECAR_VERSION=$SIDECAR_VERSION SIDECAR_GIT_COMMIT=$SIDECAR_GIT_COMMIT cargo build -p plekko --release --target $(cat /rust_target.txt)
 
-RUN cp target/$(cat /rust_target.txt)/release/sidecar sidecar-bin
+RUN cp target/$(cat /rust_target.txt)/release/plekko plekko-bin
 
 FROM --platform=${TARGETPLATFORM} debian:bullseye-slim
 
-COPY --from=builder /workspace/sidecar-bin /usr/local/bin/sidecar
+COPY --from=builder /workspace/plekko-bin /usr/local/bin/plekko
 COPY --from=builder /bin/grpc_health_probe /bin/grpc-health-probe
 
-ENTRYPOINT ["/usr/local/bin/sidecar"]
+ENTRYPOINT ["/usr/local/bin/plekko"]

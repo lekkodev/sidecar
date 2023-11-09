@@ -2,6 +2,3 @@
 
 members = ["sidecar","lekkod","plekko"]
 default-members = ["sidecar","lekkod","plekko"]
-
-[profile.release]
-debug = true
