@@ -15,10 +15,14 @@ use prost_types::value::Kind;
 use sidecar::evaluate::evaluator::evaluate;
 use sidecar::evaluate::evaluator::EvalContext;
 use sidecar::gen::cli::lekko::backend::v1beta1::distribution_service_client::DistributionServiceClient;
-use sidecar::gen::cli::lekko::backend::v1beta1::GetRepositoryContentsRequest;
 
-use sidecar::gen::cli::lekko::backend::v1beta1::RegisterClientRequest;
-use sidecar::gen::cli::lekko::backend::v1beta1::RepositoryKey;
+use sidecar::gen::cli::lekko::backend::v1beta1::{
+    distribution_service_server::DistributionService, DeregisterClientRequest,
+    DeregisterClientResponse, GetDeveloperAccessTokenRequest, GetDeveloperAccessTokenResponse,
+    GetRepositoryContentsRequest, GetRepositoryContentsResponse, GetRepositoryVersionRequest,
+    GetRepositoryVersionResponse, RegisterClientRequest, RegisterClientResponse, RepositoryKey,
+    SendFlagEvaluationMetricsRequest, SendFlagEvaluationMetricsResponse,
+};
 use sidecar::gen::cli::lekko::feature::v1beta1::FeatureType;
 use sidecar::gen::sdk::lekko::client::v1beta1::configuration_service_server::ConfigurationServiceServer;
 use sidecar::gen::sdk::lekko::client::v1beta1::{
@@ -762,4 +766,192 @@ where
     S: ::serde::Serializer,
 {
     serializer.collect_seq(st.values.iter().map(ValueWrapper))
+}
+
+pub struct ProxyDistributionService {
+    cache: Cache<StoreKey, Arc<Store>>,
+    dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
+}
+impl ProxyDistributionService {
+    async fn make_store(&self, key: StoreKey) -> Result<Arc<Store>, tonic::Status> {
+        // TODO don't panic here, I think that will muck up things
+        let repo_key = RepositoryKey {
+            owner_name: key.owner_name.clone().to_string().to_owned(),
+            repo_name: key.repo_name.clone().to_string().to_owned(),
+        };
+
+        let request = GetRepositoryContentsRequest {
+            repo_key: Some(repo_key.clone()),
+            feature_name: "".to_string(),
+            namespace_name: "".to_string(),
+            session_key: "".to_string(),
+        };
+        let bootstrap_data = self
+            .dist_client
+            .clone()
+            .get_repository_contents(add_api_key(request, key.api_key.clone()))
+            .await
+            .unwrap_or_else(|e| panic!("error performing initial fetch: {:?}", e)) // TODO
+            .into_inner();
+
+        let conn_creds = {
+            let res = self
+                .dist_client
+                .clone()
+                .register_client(add_api_key(
+                    RegisterClientRequest {
+                        repo_key: Some(repo_key.clone()),
+                        initial_bootstrap_sha: bootstrap_data.commit_sha.clone(),
+                        sidecar_version: "0.0".to_string(),
+                        namespace_list: vec![],
+                    },
+                    key.api_key.clone(),
+                ))
+                .await
+                .map(|resp| ConnectionCredentials {
+                    session_key: resp.into_inner().session_key,
+                    repo_key: repo_key.clone(),
+                    api_key: key.api_key.clone(),
+                });
+            match res {
+                Ok(conn) => Some(conn),
+                Err(err) => {
+                    panic!("error connecting to remote: {:?}", err); // TODO
+                }
+            }
+        };
+
+        let store = Arc::new(Store::new(
+            self.dist_client.clone(),
+            bootstrap_data,
+            conn_creds.clone(),
+            Duration::new(15, 0),
+            Mode::Default,
+            format!("{:?}/{:?}", key.owner_name, key.repo_name),
+            Some(Metrics::new(
+                self.dist_client.clone(),
+                key.api_key.clone(),
+                None,
+            )),
+        ));
+        Ok(store)
+    }
+}
+
+#[tonic::async_trait]
+impl DistributionService for ProxyDistributionService {
+    async fn get_repository_version(
+        &self,
+        request: Request<GetRepositoryVersionRequest>,
+    ) -> Result<tonic::Response<GetRepositoryVersionResponse>, tonic::Status> {
+        let api_key = request
+            .metadata()
+            .get("APIKEY")
+            .ok_or_else(|| Status::invalid_argument("no api key provided"))?
+            .clone();
+        let inner = request.into_inner();
+        let store_key = StoreKey {
+            owner_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .owner_name,
+            ),
+            repo_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .repo_name,
+            ),
+
+            api_key: api_key,
+        };
+        let store = self
+            .cache
+            .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
+            .await
+            .unwrap(); // TODO - not sure how error prop works in rust
+
+        return Ok(Response::new(GetRepositoryVersionResponse {
+            commit_sha: store.get_version_local(),
+        }));
+    }
+
+    async fn get_repository_contents(
+        &self,
+        request: Request<GetRepositoryContentsRequest>,
+    ) -> Result<tonic::Response<GetRepositoryContentsResponse>, tonic::Status> {
+        let api_key = request
+            .metadata()
+            .get("APIKEY")
+            .ok_or_else(|| Status::invalid_argument("no api key provided"))?
+            .clone();
+        let inner = request.into_inner();
+        let store_key = StoreKey {
+            owner_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .owner_name,
+            ),
+            repo_name: Box::new(
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .repo_name,
+            ),
+
+            api_key: api_key,
+        };
+        let store = self
+            .cache
+            .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
+            .await
+            .unwrap(); // TODO - not sure how error prop works in rust
+
+        let (version, namespaces) =
+            store.get_repo_contents_local(&inner.namespace_name, &inner.feature_name);
+        Ok(Response::new(GetRepositoryContentsResponse {
+            namespaces,
+            commit_sha: version,
+        }))
+    }
+
+    async fn send_flag_evaluation_metrics(
+        &self,
+        request: tonic::Request<SendFlagEvaluationMetricsRequest>,
+    ) -> std::result::Result<tonic::Response<SendFlagEvaluationMetricsResponse>, tonic::Status>
+    {
+        // TODO not sure what is going on here
+        return Ok(tonic::Response::new(
+            SendFlagEvaluationMetricsResponse::default(),
+        ));
+    }
+
+    async fn register_client(
+        &self,
+        request: tonic::Request<RegisterClientRequest>,
+    ) -> std::result::Result<tonic::Response<RegisterClientResponse>, tonic::Status> {
+        // TODO
+        return Ok(tonic::Response::new(RegisterClientResponse::default()));
+    }
+
+    async fn deregister_client(
+        &self,
+        request: tonic::Request<DeregisterClientRequest>,
+    ) -> std::result::Result<tonic::Response<DeregisterClientResponse>, tonic::Status> {
+        Ok(tonic::Response::new(DeregisterClientResponse::default()))
+    }
+    async fn get_developer_access_token(
+        &self,
+        _request: tonic::Request<GetDeveloperAccessTokenRequest>,
+    ) -> std::result::Result<tonic::Response<GetDeveloperAccessTokenResponse>, tonic::Status> {
+        Err(tonic::Status::unimplemented(
+            "cannot issue tokens from plekko",
+        ))
+    }
 }
