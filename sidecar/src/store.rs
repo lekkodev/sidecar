@@ -1,3 +1,4 @@
+use crate::metrics::Metrics;
 use std::{
     collections::HashMap,
     path::Path,
@@ -48,6 +49,10 @@ pub struct Store {
     // keeping the join handle around keeps the poll watcher in scope,
     // which is necessary to receive watch events from the filesystem.
     _join_handle: Option<JoinHandle<PollWatcher>>,
+
+    // if we're made with metrics, we'll send the track_flag_evaluation events
+    // is there a reason not to do this?
+    pub metrics: Option<Metrics>,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -267,6 +272,7 @@ impl Store {
         poll_interval: Duration,
         mode: Mode,
         repo_path: String,
+        metrics: Option<Metrics>,
     ) -> Self {
         let state = Arc::new(RwLock::new(ConcurrentState {
             cache: create_feature_store(contents.namespaces),
@@ -290,6 +296,7 @@ impl Store {
         Self {
             state,
             _join_handle: jh,
+            metrics: metrics,
         }
     }
 

@@ -30,6 +30,7 @@ use sidecar::gen::sdk::lekko::client::v1beta1::{
 };
 use sidecar::logging;
 use sidecar::logging::InsertLogFields;
+use sidecar::metrics::Metrics;
 use sidecar::metrics::RuntimeMetrics;
 use sidecar::store::Store;
 use sidecar::types;
@@ -254,6 +255,11 @@ impl ProxyConfigurationService {
             Duration::new(15, 0),
             Mode::Default,
             format!("{:?}/{:?}", key.owner_name, key.repo_name),
+            Some(Metrics::new(
+                self.dist_client.clone(),
+                key.api_key.clone(),
+                None,
+            )),
         ));
         Ok(store)
     }
@@ -339,7 +345,9 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
-
+        if let Some(m) = store.metrics.as_ref() {
+            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
+        }
         Ok(Response::new(GetBoolValueResponse {
             value: types::from_any::<bool>(&result)
                 .map_err(|e| tonic::Status::internal(e.to_string()))?,
@@ -412,6 +420,9 @@ impl ConfigurationService for ProxyConfigurationService {
         let result = eval_result.0;
         let value =
             types::from_any::<i64>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
+        if let Some(m) = store.metrics.as_ref() {
+            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
+        }
         Ok(inner.insert_log_fields(Response::new(GetIntValueResponse { value: value })))
     }
 
@@ -481,6 +492,9 @@ impl ConfigurationService for ProxyConfigurationService {
         let result = eval_result.0;
         let value =
             types::from_any::<f64>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
+        if let Some(m) = store.metrics.as_ref() {
+            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
+        }
         Ok(inner.insert_log_fields(Response::new(GetFloatValueResponse { value: value })))
     }
 
@@ -550,6 +564,9 @@ impl ConfigurationService for ProxyConfigurationService {
         let result = eval_result.0;
         let value = types::from_any::<String>(&result)
             .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        if let Some(m) = store.metrics.as_ref() {
+            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
+        }
         Ok(inner.insert_log_fields(Response::new(GetStringValueResponse { value: value })))
     }
 
@@ -617,6 +634,9 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
+        if let Some(m) = store.metrics.as_ref() {
+            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
+        }
         Ok(
             inner.insert_log_fields(Response::new(GetProtoValueResponse {
                 value: Some(result.clone()),
@@ -694,6 +714,9 @@ impl ConfigurationService for ProxyConfigurationService {
         let result = eval_result.0;
         let value = types::from_any::<prost_types::Value>(&result)
             .map_err(|e| tonic::Status::internal(e.to_string()))?;
+        if let Some(m) = store.metrics.as_ref() {
+            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
+        }
         Ok(inner.insert_log_fields(Response::new(GetJsonValueResponse {
             value: serde_json::to_vec(&ValueWrapper(&value)).map_err(|e| {
                 Status::internal("failure serializing json ".to_owned() + &e.to_string())

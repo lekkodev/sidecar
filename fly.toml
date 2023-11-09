@@ -1,0 +1,23 @@
+# fly.toml app configuration file generated for plekko on 2023-11-09T11:59:53-08:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "plekko"
+primary_region = "sjc"
+# TODO kill_timeout for metrics
+
+[build]
+  dockerfile = "Dockerfile.plekko"
+
+[http_service]
+  internal_port = 50051
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[http_service.http_options]
+    h2_backend = true
+
