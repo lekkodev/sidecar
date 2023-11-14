@@ -12,6 +12,7 @@ tokio = { version="1.0", features=["rt", "rt-multi-thread", "macros", "time", "s
 humantime = "2"
 tonic = { version= "0.9", features=["tls", "gzip"]}
 tonic-health = "0.9.2"
+tonic-web = "0.9"
 hyper = { version="0.14", features=["full"] }
 hyper-rustls = { version="0.23", features=["webpki-roots", "http2"] }
 log = "0.4"

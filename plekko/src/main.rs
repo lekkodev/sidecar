@@ -5,6 +5,8 @@ use sidecar::gen::cli::lekko::backend::v1beta1::distribution_service_server::Dis
 use std::net::SocketAddr;
 use tokio::signal::unix::SignalKind;
 use tokio::time::sleep;
+use tower_http::cors::AllowOrigin;
+use tower_http::cors::CorsLayer;
 
 use hyper_rustls::HttpsConnector;
 use hyper_rustls::HttpsConnectorBuilder;
@@ -151,6 +153,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await;
 
     Server::builder()
+        .accept_http1(true)
         .layer(
             TraceLayer::new_for_grpc()
                 .make_span_with(DefaultMakeSpan::new())
@@ -176,9 +179,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .latency_unit(LatencyUnit::Millis),
                 ),
         )
-        .add_service(proxy_config_service)
-        .add_service(proxy_dist_service)
-        .add_service(health_service)
+        .layer(
+            CorsLayer::new()
+                .allow_headers(tower_http::cors::Any)
+                .allow_origin(AllowOrigin::mirror_request()),
+        )
+        .add_service(tonic_web::enable(proxy_config_service))
+        .add_service(tonic_web::enable(proxy_dist_service))
+        .add_service(tonic_web::enable(health_service))
         .serve_with_shutdown(addr, async move {
             tokio::signal::unix::signal(SignalKind::terminate())
                 .unwrap()
@@ -934,7 +942,7 @@ impl DistributionService for ProxyDistributionService {
 
     async fn send_flag_evaluation_metrics(
         &self,
-        request: tonic::Request<SendFlagEvaluationMetricsRequest>,
+        _request: tonic::Request<SendFlagEvaluationMetricsRequest>,
     ) -> std::result::Result<tonic::Response<SendFlagEvaluationMetricsResponse>, tonic::Status>
     {
         // TODO not sure what is going on here
@@ -945,7 +953,7 @@ impl DistributionService for ProxyDistributionService {
 
     async fn register_client(
         &self,
-        request: tonic::Request<RegisterClientRequest>,
+        _request: tonic::Request<RegisterClientRequest>,
     ) -> std::result::Result<tonic::Response<RegisterClientResponse>, tonic::Status> {
         // TODO
         return Ok(tonic::Response::new(RegisterClientResponse::default()));
@@ -953,7 +961,7 @@ impl DistributionService for ProxyDistributionService {
 
     async fn deregister_client(
         &self,
-        request: tonic::Request<DeregisterClientRequest>,
+        _request: tonic::Request<DeregisterClientRequest>,
     ) -> std::result::Result<tonic::Response<DeregisterClientResponse>, tonic::Status> {
         Ok(tonic::Response::new(DeregisterClientResponse::default()))
     }
