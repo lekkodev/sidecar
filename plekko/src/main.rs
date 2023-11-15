@@ -90,6 +90,70 @@ fn parse_duration(arg: &str) -> Result<std::time::Duration, humantime::DurationE
     arg.parse::<humantime::Duration>().map(Into::into)
 }
 
+/*macro_rules! get_result {
+    ($request:ident, $requested_type: ident) => { {
+        let api_key = $request
+            .metadata()
+            .get("APIKEY")
+            .ok_or_else(|| Status::invalid_argument("no api key provided"))?
+            .clone();
+        let inner = $request.into_inner();
+        let store_key = StoreKey {
+            owner_name:
+                inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .owner_name,
+            repo_name: inner
+                    .repo_key
+                    .clone()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                    .repo_name,
+            api_key,
+        };
+        let (store, metrics) = &*self
+            .cache
+            .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
+            .await
+            .unwrap(); // TODO - not sure how error prop works in rust
+
+        let context = &inner.context;
+        let feature = FeatureRequestParams {
+            rk: convert_repo_key(
+                inner
+                    .repo_key
+                    .as_ref()
+                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?,
+            ),
+            namespace: inner.namespace.clone(),
+            feature: inner.key.clone(),
+        };
+
+        let feature_data = store
+            .get_feature_local(feature.clone())
+            .ok_or_else(|| Status::invalid_argument("feature not found"))?;
+        if feature_data.feature.r#type() != FeatureType::Unspecified && // backwards compatibility
+            feature_data.feature.r#type() != $requested_type
+        {
+            return Err(tonic::Status::invalid_argument(format!(
+                "type mismatch: requested feature is not of type {:?}",
+                $requested_type.as_str_name()
+            )));
+        }
+        let eval_context = EvalContext {
+            namespace: feature.namespace.to_owned(),
+            feature_name: feature_data.feature.key.to_owned(),
+        };
+        let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
+        let result = eval_result.0;
+        metrics.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
+    Ok(result)
+    }
+
+    };
+}*/
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     logging::init();
@@ -129,7 +193,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip);
 
-    let cache: Cache<StoreKey, Arc<Store>> = Cache::new(10_000);
+    let cache: Cache<StoreKey, Arc<(Store, Metrics)>> = Cache::new(10_000);
 
     let proxy_config_service = ConfigurationServiceServer::new(ProxyConfigurationService {
         cache: cache.clone(),
@@ -213,17 +277,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
 pub struct StoreKey {
     api_key: MetadataValue<Ascii>,
-    owner_name: Box<String>,
-    repo_name: Box<String>,
+    owner_name: String,
+    repo_name: String,
 }
 
 pub struct ProxyConfigurationService {
-    cache: Cache<StoreKey, Arc<Store>>,
+    cache: Cache<StoreKey, Arc<(Store, Metrics)>>,
     dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
 }
 
 impl ProxyConfigurationService {
-    async fn make_store(&self, key: StoreKey) -> Result<Arc<Store>, tonic::Status> {
+    async fn make_store(&self, key: StoreKey) -> Result<Arc<(Store, Metrics)>, tonic::Status> {
         // TODO don't panic here, I think that will muck up things
         let repo_key = RepositoryKey {
             owner_name: key.owner_name.clone().to_string().to_owned(),
@@ -240,8 +304,7 @@ impl ProxyConfigurationService {
             .dist_client
             .clone()
             .get_repository_contents(add_api_key(request, key.api_key.clone()))
-            .await
-            .unwrap_or_else(|e| panic!("error performing initial fetch: {:?}", e)) // TODO
+            .await?
             .into_inner();
 
         let conn_creds = {
@@ -271,18 +334,16 @@ impl ProxyConfigurationService {
             }
         };
 
-        let store = Arc::new(Store::new(
-            self.dist_client.clone(),
-            bootstrap_data,
-            conn_creds.clone(),
-            Duration::new(15, 0),
-            Mode::Default,
-            format!("{:?}/{:?}", key.owner_name, key.repo_name),
-            Some(Metrics::new(
+        let store = Arc::new((
+            Store::new(
                 self.dist_client.clone(),
-                key.api_key.clone(),
-                None,
-            )),
+                bootstrap_data,
+                conn_creds.clone(),
+                Duration::new(15, 0),
+                Mode::Default,
+                format!("{:?}/{:?}", key.owner_name, key.repo_name),
+            ),
+            Metrics::new(self.dist_client.clone(), key.api_key.clone(), None),
         ));
         Ok(store)
     }
@@ -309,6 +370,7 @@ impl ConfigurationService for ProxyConfigurationService {
         request: Request<GetBoolValueRequest>,
     ) -> Result<tonic::Response<GetBoolValueResponse>, tonic::Status> {
         let requested_type = FeatureType::Bool;
+        //let result = get_result!(request, requested_type)?;
         let api_key = request
             .metadata()
             .get("APIKEY")
@@ -316,28 +378,23 @@ impl ConfigurationService for ProxyConfigurationService {
             .clone();
         let inner = request.into_inner();
         let store_key = StoreKey {
-            owner_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .owner_name,
-            ),
-            repo_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .repo_name,
-            ),
-
-            api_key: api_key,
+            owner_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .owner_name,
+            repo_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .repo_name,
+            api_key,
         };
-        let store = self
+        let (store, metrics) = &*self
             .cache
             .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
             .await
-            .unwrap(); // TODO - not sure how error prop works in rust
+            .map_err(|e| (*e).clone())?;
 
         let context = &inner.context;
         let feature = FeatureRequestParams {
@@ -368,9 +425,7 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
-        if let Some(m) = store.metrics.as_ref() {
-            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
-        }
+        metrics.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
         Ok(Response::new(GetBoolValueResponse {
             value: types::from_any::<bool>(&result)
                 .map_err(|e| tonic::Status::internal(e.to_string()))?,
@@ -389,24 +444,20 @@ impl ConfigurationService for ProxyConfigurationService {
             .clone();
         let inner = request.into_inner();
         let store_key = StoreKey {
-            owner_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .owner_name,
-            ),
-            repo_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .repo_name,
-            ),
-
-            api_key: api_key,
+            owner_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .owner_name,
+            repo_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .repo_name,
+            api_key,
         };
-        let store = self
+
+        let (store, metrics) = &*self
             .cache
             .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
             .await
@@ -441,12 +492,10 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
+        metrics.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
         let value =
             types::from_any::<i64>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
-        if let Some(m) = store.metrics.as_ref() {
-            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
-        }
-        Ok(inner.insert_log_fields(Response::new(GetIntValueResponse { value: value })))
+        Ok(inner.insert_log_fields(Response::new(GetIntValueResponse { value })))
     }
 
     async fn get_float_value(
@@ -454,6 +503,7 @@ impl ConfigurationService for ProxyConfigurationService {
         request: Request<GetFloatValueRequest>,
     ) -> Result<tonic::Response<GetFloatValueResponse>, tonic::Status> {
         let requested_type = FeatureType::Float;
+
         let api_key = request
             .metadata()
             .get("APIKEY")
@@ -461,24 +511,20 @@ impl ConfigurationService for ProxyConfigurationService {
             .clone();
         let inner = request.into_inner();
         let store_key = StoreKey {
-            owner_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .owner_name,
-            ),
-            repo_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .repo_name,
-            ),
-
-            api_key: api_key,
+            owner_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .owner_name,
+            repo_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .repo_name,
+            api_key,
         };
-        let store = self
+
+        let (store, metrics) = &*self
             .cache
             .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
             .await
@@ -513,12 +559,11 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
+        metrics.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
+
         let value =
             types::from_any::<f64>(&result).map_err(|e| tonic::Status::internal(e.to_string()))?;
-        if let Some(m) = store.metrics.as_ref() {
-            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
-        }
-        Ok(inner.insert_log_fields(Response::new(GetFloatValueResponse { value: value })))
+        Ok(inner.insert_log_fields(Response::new(GetFloatValueResponse { value })))
     }
 
     async fn get_string_value(
@@ -533,24 +578,20 @@ impl ConfigurationService for ProxyConfigurationService {
             .clone();
         let inner = request.into_inner();
         let store_key = StoreKey {
-            owner_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .owner_name,
-            ),
-            repo_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .repo_name,
-            ),
-
-            api_key: api_key,
+            owner_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .owner_name,
+            repo_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .repo_name,
+            api_key,
         };
-        let store = self
+
+        let (store, metrics) = &*self
             .cache
             .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
             .await
@@ -585,12 +626,10 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
+        metrics.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
         let value = types::from_any::<String>(&result)
             .map_err(|e| tonic::Status::internal(e.to_string()))?;
-        if let Some(m) = store.metrics.as_ref() {
-            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
-        }
-        Ok(inner.insert_log_fields(Response::new(GetStringValueResponse { value: value })))
+        Ok(inner.insert_log_fields(Response::new(GetStringValueResponse { value })))
     }
 
     async fn get_proto_value(
@@ -605,24 +644,20 @@ impl ConfigurationService for ProxyConfigurationService {
             .clone();
         let inner = request.into_inner();
         let store_key = StoreKey {
-            owner_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .owner_name,
-            ),
-            repo_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .repo_name,
-            ),
-
-            api_key: api_key,
+            owner_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .owner_name,
+            repo_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .repo_name,
+            api_key,
         };
-        let store = self
+
+        let (store, metrics) = &*self
             .cache
             .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
             .await
@@ -657,9 +692,7 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
-        if let Some(m) = store.metrics.as_ref() {
-            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
-        }
+        metrics.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
         Ok(
             inner.insert_log_fields(Response::new(GetProtoValueResponse {
                 value: Some(result.clone()),
@@ -683,24 +716,20 @@ impl ConfigurationService for ProxyConfigurationService {
             .clone();
         let inner = request.into_inner();
         let store_key = StoreKey {
-            owner_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .owner_name,
-            ),
-            repo_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .repo_name,
-            ),
-
-            api_key: api_key,
+            owner_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .owner_name,
+            repo_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .repo_name,
+            api_key,
         };
-        let store = self
+
+        let (store, metrics) = &*self
             .cache
             .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
             .await
@@ -735,11 +764,9 @@ impl ConfigurationService for ProxyConfigurationService {
         };
         let eval_result = evaluate(&feature_data.feature, context, &eval_context)?;
         let result = eval_result.0;
+        metrics.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
         let value = types::from_any::<prost_types::Value>(&result)
             .map_err(|e| tonic::Status::internal(e.to_string()))?;
-        if let Some(m) = store.metrics.as_ref() {
-            m.track_flag_evaluation(&feature, &feature_data, context, &eval_result.1);
-        }
         Ok(inner.insert_log_fields(Response::new(GetJsonValueResponse {
             value: serde_json::to_vec(&ValueWrapper(&value)).map_err(|e| {
                 Status::internal("failure serializing json ".to_owned() + &e.to_string())
@@ -788,11 +815,11 @@ where
 }
 
 pub struct ProxyDistributionService {
-    cache: Cache<StoreKey, Arc<Store>>,
+    cache: Cache<StoreKey, Arc<(Store, Metrics)>>,
     dist_client: DistributionServiceClient<hyper::Client<HttpsConnector<HttpConnector>, BoxBody>>,
 }
 impl ProxyDistributionService {
-    async fn make_store(&self, key: StoreKey) -> Result<Arc<Store>, tonic::Status> {
+    async fn make_store(&self, key: StoreKey) -> Result<Arc<(Store, Metrics)>, tonic::Status> {
         // TODO don't panic here, I think that will muck up things
         let repo_key = RepositoryKey {
             owner_name: key.owner_name.clone().to_string().to_owned(),
@@ -840,18 +867,16 @@ impl ProxyDistributionService {
             }
         };
 
-        let store = Arc::new(Store::new(
-            self.dist_client.clone(),
-            bootstrap_data,
-            conn_creds.clone(),
-            Duration::new(15, 0),
-            Mode::Default,
-            format!("{:?}/{:?}", key.owner_name, key.repo_name),
-            Some(Metrics::new(
+        let store = Arc::new((
+            Store::new(
                 self.dist_client.clone(),
-                key.api_key.clone(),
-                None,
-            )),
+                bootstrap_data,
+                conn_creds.clone(),
+                Duration::new(15, 0),
+                Mode::Default,
+                format!("{:?}/{:?}", key.owner_name, key.repo_name),
+            ),
+            Metrics::new(self.dist_client.clone(), key.api_key.clone(), None),
         ));
         Ok(store)
     }
@@ -870,24 +895,19 @@ impl DistributionService for ProxyDistributionService {
             .clone();
         let inner = request.into_inner();
         let store_key = StoreKey {
-            owner_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .owner_name,
-            ),
-            repo_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .repo_name,
-            ),
-
-            api_key: api_key,
+            owner_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .owner_name,
+            repo_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .repo_name,
+            api_key,
         };
-        let store = self
+        let (store, _) = &*self
             .cache
             .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
             .await
@@ -909,24 +929,19 @@ impl DistributionService for ProxyDistributionService {
             .clone();
         let inner = request.into_inner();
         let store_key = StoreKey {
-            owner_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .owner_name,
-            ),
-            repo_name: Box::new(
-                inner
-                    .repo_key
-                    .clone()
-                    .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
-                    .repo_name,
-            ),
-
-            api_key: api_key,
+            owner_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .owner_name,
+            repo_name: inner
+                .repo_key
+                .clone()
+                .ok_or_else(|| Status::invalid_argument("no repo key provided"))?
+                .repo_name,
+            api_key,
         };
-        let store = self
+        let (store, _) = &*self
             .cache
             .try_get_with(store_key.clone(), self.make_store(store_key.clone()))
             .await

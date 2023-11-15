@@ -243,7 +243,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.poll_interval,
         args.mode.to_owned(),
         args.repo_path,
-        None,
     ));
 
     let session_key_opt = conn_creds.as_ref().map(|c| c.session_key.clone());
