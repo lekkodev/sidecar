@@ -133,15 +133,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         args
     );
 
-    let http_client = hyper::Client::builder().build(
-        HttpsConnectorBuilder::new()
-            // TODO: look into in the future, if we should just embed our own TLS
-            // cert here instead of packaging with webpki.
-            .with_webpki_roots()
-            .https_or_http()
-            .enable_http2()
-            .build(),
-    );
+    // For some reason, this sends http1 requests, which causes it to fail when chaining sidecars
+    let connection_builder = HttpsConnectorBuilder::new()
+        // TODO: look into in the future, if we should just embed our own TLS
+        // cert here instead of packaging with webpki.
+        .with_webpki_roots()
+        .https_or_http()
+        .enable_http2()
+        .build();
+
+    let http_client = hyper::Client::builder().build(connection_builder);
 
     // By default, send and accept GZip compression for both the client and the server.
     let dist_client = DistributionServiceClient::with_origin(http_client, lekko_addr)
