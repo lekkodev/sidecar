@@ -96,7 +96,7 @@ impl RepoFS {
         let yaml = match read_to_string(&lekko_root_path) {
             Ok(contents) => match YamlLoader::load_from_str(contents.as_ref()) {
                 Ok(docs) => docs
-                    .get(0)
+                    .first()
                     .ok_or_else(|| Status::internal("invalid lekko.root.yaml"))?
                     .to_owned(),
                 Err(e) => {

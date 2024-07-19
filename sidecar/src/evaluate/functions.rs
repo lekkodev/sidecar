@@ -121,7 +121,7 @@ mod tests {
         let setup = Setup::new();
 
         // Different expected results with same value across different eval contexts
-        let test_cases = vec![
+        let test_cases = [
             vec![
                 (1, false),
                 (2, false),
@@ -177,7 +177,7 @@ mod tests {
         let setup = Setup::new();
 
         // Different expected results with same value across different eval contexts
-        let test_cases = vec![
+        let test_cases = [
             vec![
                 (3.1415, false),
                 (2.7182, false),
@@ -233,7 +233,7 @@ mod tests {
         let setup = Setup::new();
 
         // Different expected results with same value across different eval contexts
-        let test_cases = vec![
+        let test_cases = [
             vec![
                 (String::from("hello"), false),
                 (String::from("world"), false),

@@ -108,7 +108,7 @@ pub fn check_rule(
 }
 
 pub fn check_rules(
-    rules: &Vec<Rule>,
+    rules: &[Rule],
     operator: &LogicalOperator,
     context: &HashMap<String, LekkoValue>,
     eval_context: &EvalContext,

@@ -119,6 +119,7 @@ impl Metrics {
             select! {
                 _ = interval.tick() => {
                     if !buffer.is_empty() {
+                        #[allow(clippy::drain_collect)]
                         futures.push(Metrics::send_flag_evaluations(dist_client.clone(), buffer.drain(..).collect(), api_key.clone(), session_key.clone()));
                     }
                 },
@@ -127,6 +128,7 @@ impl Metrics {
                 Some(event) = rx.recv() => {
                     buffer.push(event);
                     if buffer.len() >= 1024 {
+                        #[allow(clippy::drain_collect)]
                         futures.push(Metrics::send_flag_evaluations(dist_client.clone(), buffer.drain(..).collect(), api_key.clone(), session_key.clone()));
                     }
                 },

@@ -105,7 +105,7 @@ async fn fs_watch(path: String, state: Arc<RwLock<ConcurrentState>>) -> PollWatc
                                         // obtain lock again to replace data
                                         let mut state_guard = state.write().unwrap();
                                         state_guard.cache = create_feature_store(res.namespaces);
-                                        state_guard.repo_version = res.commit_sha.to_owned();
+                                        res.commit_sha.clone_into(&mut state_guard.repo_version);
                                         // drop state_guard
                                     }
                                     info!(
@@ -180,7 +180,7 @@ async fn poll_loop(
                     // obtain lock again to replace data
                     let mut state_guard = state.write().unwrap();
                     state_guard.cache = create_feature_store(res.namespaces);
-                    state_guard.repo_version = res.commit_sha.to_owned();
+                    res.commit_sha.clone_into(&mut state_guard.repo_version);
                     // drop state_guard
                 }
                 info!("loaded repo contents for commit sha {:}", res.commit_sha);
@@ -347,7 +347,7 @@ fn filter_cache(
             |mut vec_map, (feature_key, feature)| {
                 vec_map
                     .entry(feature_key.namespace.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(backend::v1beta1::Feature {
                         name: feature_key.feature.clone(),
                         sha: feature.version.clone(),
