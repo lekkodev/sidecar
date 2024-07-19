@@ -270,19 +270,17 @@ impl RepoFS {
         // Assumes default location for compiled protobuf image
         let image_path = Path::new(&self.contents_path).join(Path::new("proto/image.bin"));
         match read(image_path) {
-            Err(e) => {
-                return Err(Status::internal(format!(
-                    "failed to read proto image path: {e:?}"
-                )))
-            }
+            Err(e) => Err(Status::internal(format!(
+                "failed to read proto image path: {e:?}"
+            ))),
             Ok(bytes) => {
                 let fds = match FileDescriptorSet::decode(bytes.as_ref()) {
                     Err(e) => {
                         return Err(Status::internal(format!(
                             "failed to decode file descriptor set: {e:?}"
-                        )))
+                        )));
                     }
-                    Ok(fds) => fds,
+                    Ok(decoded) => decoded,
                 };
                 Ok(fds)
             }
