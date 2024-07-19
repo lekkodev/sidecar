@@ -947,11 +947,12 @@ impl DistributionService for ProxyDistributionService {
             .await
             .unwrap(); // TODO - not sure how error prop works in rust
 
-        let (version, namespaces) =
+        let (version, namespaces, file_descriptor_set) =
             store.get_repo_contents_local(&inner.namespace_name, &inner.feature_name);
         Ok(Response::new(GetRepositoryContentsResponse {
             namespaces,
             commit_sha: version,
+            file_descriptor_set,
         }))
     }
 

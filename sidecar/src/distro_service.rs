@@ -71,12 +71,13 @@ impl DistributionService for Service {
             )));
         }
         let request = request.into_inner();
-        let (version, namespaces) = self
+        let (version, namespaces, file_descriptor_set) = self
             .store
             .get_repo_contents_local(&request.namespace_name, &request.feature_name);
         Ok(Response::new(GetRepositoryContentsResponse {
             namespaces,
             commit_sha: version,
+            file_descriptor_set,
         }))
     }
 

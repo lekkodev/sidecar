@@ -6,6 +6,7 @@ use std::{
 use gix::bstr::ByteSlice;
 use log::{debug, warn};
 use prost::Message;
+use prost_types::FileDescriptorSet;
 use sha1::Digest;
 use tonic::Status;
 use yaml_rust::YamlLoader;
@@ -84,9 +85,14 @@ impl RepoFS {
                 Ok(nsr) => nsr,
                 Err(e) => return Err(e),
             };
+        let fds = match self.file_descriptor_set() {
+            Ok(fds) => Some(fds),
+            Err(e) => return Err(e),
+        };
         Ok(GetRepositoryContentsResponse {
             commit_sha,
             namespaces,
+            file_descriptor_set: fds,
         })
     }
 
@@ -255,6 +261,30 @@ impl RepoFS {
                     Err(e) => return Err(Status::internal(format!("failed rev parse: {e:?}"))),
                 };
                 Ok(commit_sha)
+            }
+        }
+    }
+
+    // Reads the file descriptor set for types in the repository.
+    pub fn file_descriptor_set(&self) -> Result<FileDescriptorSet, Status> {
+        // Assumes default location for compiled protobuf image
+        let image_path = Path::new(&self.contents_path).join(Path::new("proto/image.bin"));
+        match read(image_path) {
+            Err(e) => {
+                return Err(Status::internal(format!(
+                    "failed to read proto image path: {e:?}"
+                )))
+            }
+            Ok(bytes) => {
+                let fds = match FileDescriptorSet::decode(bytes.as_ref()) {
+                    Err(e) => {
+                        return Err(Status::internal(format!(
+                            "failed to decode file descriptor set: {e:?}"
+                        )))
+                    }
+                    Ok(fds) => fds,
+                };
+                Ok(fds)
             }
         }
     }

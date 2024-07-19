@@ -102,6 +102,9 @@ pub fn check_rule(
                 .ok_or_else(|| Status::internal("empty function"))?;
             match function {
                 Function::Bucket(bucket_f) => bucket(bucket_f, context, eval_context),
+                Function::EvaluateTo(_) => Err(Status::internal(
+                    "evaluate_to is not currently supported in the sidecar",
+                )),
             }
         }
     }
