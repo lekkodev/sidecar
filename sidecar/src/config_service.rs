@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use prost_types::{value::Kind, Any};
-use tonic::{metadata::MetadataMap, Request, Response, Status};
+use tonic::{Request, Response, Status};
 
 use crate::{
     evaluate::evaluator::{evaluate, EvalContext},
@@ -26,10 +26,6 @@ pub struct Service {
     pub mode: Mode,
     pub metrics: Option<Metrics>,
     pub repo_key: RepositoryKey,
-}
-
-trait SharedRequest {
-    fn metadata(&self) -> &MetadataMap;
 }
 
 impl Service {
@@ -314,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_serialization() {
-        let tcs = vec![
+        let tcs = [
             SerTestCase {
                 val: prost_types::Value {
                     kind: Some(prost_types::value::Kind::ListValue(
@@ -338,14 +334,11 @@ mod tests {
                     kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
                         // We can deterministically get the string of a btreemap since it
                         // has a well defined order vs. hashmap.
-                        fields: BTreeMap::<String, prost_types::Value>::from_iter(
-                            vec![
-                                ("a".to_owned(), string_value("val")),
-                                ("b".to_owned(), number_value(-1.0)),
-                                ("c".to_owned(), bool_value(false)),
-                            ]
-                            .into_iter(),
-                        ),
+                        fields: BTreeMap::<String, prost_types::Value>::from_iter(vec![
+                            ("a".to_owned(), string_value("val")),
+                            ("b".to_owned(), number_value(-1.0)),
+                            ("c".to_owned(), bool_value(false)),
+                        ]),
                     })),
                 },
                 res: r#"{"a":"val","b":-1.0,"c":false}"#,

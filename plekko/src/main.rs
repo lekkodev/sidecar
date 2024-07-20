@@ -961,9 +961,9 @@ impl DistributionService for ProxyDistributionService {
     ) -> std::result::Result<tonic::Response<SendFlagEvaluationMetricsResponse>, tonic::Status>
     {
         // TODO not sure what is going on here
-        return Ok(tonic::Response::new(
+        Ok(tonic::Response::new(
             SendFlagEvaluationMetricsResponse::default(),
-        ));
+        ))
     }
 
     async fn register_client(
@@ -971,7 +971,7 @@ impl DistributionService for ProxyDistributionService {
         _request: tonic::Request<RegisterClientRequest>,
     ) -> std::result::Result<tonic::Response<RegisterClientResponse>, tonic::Status> {
         // TODO
-        return Ok(tonic::Response::new(RegisterClientResponse::default()));
+        Ok(tonic::Response::new(RegisterClientResponse::default()))
     }
 
     async fn deregister_client(
