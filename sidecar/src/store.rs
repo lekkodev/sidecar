@@ -30,6 +30,7 @@ use notify::{
     EventKind::{Create, Modify, Remove},
     PollWatcher, RecursiveMode, Watcher,
 };
+use prost_types::FileDescriptorSet;
 use regex::Regex;
 use tonic::{body::BoxBody, Request};
 
@@ -66,6 +67,7 @@ type FeatureStore = HashMap<FeatureKey, FeatureInfo>;
 struct ConcurrentState {
     cache: FeatureStore,
     repo_version: String,
+    file_descriptor_set: Option<FileDescriptorSet>,
 }
 
 pub struct FeatureData {
@@ -271,6 +273,7 @@ impl Store {
         let state = Arc::new(RwLock::new(ConcurrentState {
             cache: create_feature_store(contents.namespaces),
             repo_version: contents.commit_sha,
+            file_descriptor_set: contents.file_descriptor_set,
         }));
         // Depending on the mode, we will either subscribe to dynamic updates
         // from the filesystem (static mode), or from Lekko backend (default mode).
@@ -297,6 +300,7 @@ impl Store {
         let ConcurrentState {
             cache,
             repo_version,
+            file_descriptor_set: _,
         } = &*self.state.read().unwrap();
         return cache
             .get(&FeatureKey {
@@ -318,15 +322,17 @@ impl Store {
         &self,
         namespace_filter: &str,
         feature_filter: &str,
-    ) -> (String, Vec<Namespace>) {
+    ) -> (String, Vec<Namespace>, Option<FileDescriptorSet>) {
         let ConcurrentState {
             cache,
             repo_version,
+            file_descriptor_set,
         } = &*self.state.read().unwrap();
 
         (
             repo_version.clone(),
             filter_cache(cache, namespace_filter, feature_filter),
+            file_descriptor_set.clone(),
         )
     }
 }
