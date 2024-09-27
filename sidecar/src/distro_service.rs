@@ -91,10 +91,13 @@ impl DistributionService for Service {
                 SendFlagEvaluationMetricsResponse::default(),
             ));
         }
+        let mut new_req: Request<SendFlagEvaluationMetricsRequest> = tonic::Request::new(request.get_ref().clone());
+        new_req.metadata_mut().clone_from(request.metadata());
+        new_req.metadata_mut().remove("content-length");
         self.distro_client
             .clone()
             .to_owned()
-            .send_flag_evaluation_metrics(override_api_key(request, &self.conn_creds))
+            .send_flag_evaluation_metrics(override_api_key(new_req, &self.conn_creds))
             .await
     }
 
@@ -128,8 +131,9 @@ impl DistributionService for Service {
                 .sidecar_version
                 .push_str(format!("_{}_{}", TIERED_PREFIX, self.sidecar_version.clone()).as_str()),
         }
-        let mut new_req = tonic::Request::new(register_request);
+        let mut new_req: Request<RegisterClientRequest> = tonic::Request::new(register_request);
         new_req.metadata_mut().clone_from(request.metadata());
+        new_req.metadata_mut().remove("content-length");
         self.distro_client
             .clone()
             .to_owned()
@@ -144,10 +148,13 @@ impl DistributionService for Service {
         if self.conn_creds.is_none() && request.metadata().get(APIKEY).is_none() {
             return Ok(tonic::Response::new(DeregisterClientResponse::default()));
         }
+        let mut req = tonic::Request::new(request.get_ref().clone());
+        req.metadata_mut().clone_from(request.metadata());
+        req.metadata_mut().remove("content-length");
         self.distro_client
             .clone()
             .to_owned()
-            .deregister_client(override_api_key(request, &self.conn_creds))
+            .deregister_client(override_api_key(req, &self.conn_creds))
             .await
     }
 
