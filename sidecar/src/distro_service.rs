@@ -91,7 +91,8 @@ impl DistributionService for Service {
                 SendFlagEvaluationMetricsResponse::default(),
             ));
         }
-        let mut new_req: Request<SendFlagEvaluationMetricsRequest> = tonic::Request::new(request.get_ref().clone());
+        let mut new_req: Request<SendFlagEvaluationMetricsRequest> =
+            tonic::Request::new(request.get_ref().clone());
         new_req.metadata_mut().clone_from(request.metadata());
         new_req.metadata_mut().remove("content-length");
         self.distro_client
