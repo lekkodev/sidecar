@@ -258,7 +258,7 @@ where
 
 pub struct ValueWrapper<'a>(&'a prost_types::Value);
 
-impl<'a> serde::Serialize for ValueWrapper<'a> {
+impl serde::Serialize for ValueWrapper<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: ::serde::Serializer,

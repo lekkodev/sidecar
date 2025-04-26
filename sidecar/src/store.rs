@@ -302,7 +302,7 @@ impl Store {
             repo_version,
             file_descriptor_set: _,
         } = &*self.state.read().unwrap();
-        return cache
+        cache
             .get(&FeatureKey {
                 namespace: request.namespace.clone(),
                 feature: request.feature,
@@ -311,7 +311,7 @@ impl Store {
                 feature: feature.feature.clone(),
                 commit_sha: repo_version.clone(),
                 feature_sha: feature.version.clone(),
-            });
+            })
     }
 
     pub fn get_version_local(&self) -> String {
