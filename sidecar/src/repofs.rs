@@ -77,6 +77,7 @@ impl RepoFS {
         Ok(fs)
     }
 
+    #[allow(clippy::question_mark)]
     pub fn load(&self) -> Result<GetRepositoryContentsResponse, Status> {
         let commit_sha = self.git_commit_sha()?;
         let ns_names = self.find_namespace_names()?;
@@ -220,13 +221,9 @@ impl RepoFS {
         let origin = config_file
             .section_by_key("remote.origin")
             .map_err(|e| Status::internal(format!("cannot find section remote {}", e)))?;
-        let url_bytes = match origin
+        let url_bytes = origin
             .value("url")
-            .ok_or_else(|| Status::internal("cannot find url in remote section"))
-        {
-            Ok(ub) => ub,
-            Err(e) => return Err(e),
-        };
+            .ok_or_else(|| Status::internal("cannot find url in remote section"))?;
         let url = url_bytes
             .to_str()
             .map_err(|e| Status::internal(format!("decode url string error: {}", e)))?;
